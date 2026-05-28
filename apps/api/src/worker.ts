@@ -104,7 +104,21 @@ app.onError((err: any, c: any) => {
 
 export default {
   fetch(request: Request, env: Record<string, string>, ctx: ExecutionContext) {
-    // Inject CF bindings on every request — process.env doesn't get CF secrets
+    // Raw debug — bypass Hono entirely to test env access directly
+    const url = new URL(request.url);
+    if (url.pathname === '/debug/raw') {
+      return new Response(JSON.stringify({
+        enumerable_keys: Object.keys(env),
+        supabase_url:     !!env.SUPABASE_URL,
+        service_role_key: !!env.SUPABASE_SERVICE_ROLE_KEY,
+        anon_key:         !!env.SUPABASE_ANON_KEY,
+        jwt_secret:       !!env.JWT_SECRET,
+        jwt_refresh:      !!env.JWT_REFRESH_SECRET,
+        frontend_url:     !!env.FRONTEND_URL,
+        node_env:         env.NODE_ENV,
+      }), { headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } });
+    }
+
     setCFEnv(env);
     return app.fetch(request, env, ctx);
   },
