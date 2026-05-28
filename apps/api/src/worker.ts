@@ -10,7 +10,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { prettyJSON } from 'hono/pretty-json';
-import { setCFEnv, getEnv } from './lib/env.js';
+import { setCFEnv } from './lib/env.js';
 import { authRouter } from './routes/auth.js';
 import { eventsRouter } from './routes/events.js';
 import { registrationsRouter } from './routes/registrations.js';
@@ -66,36 +66,11 @@ app.get('/health', (c: any) =>
   c.json({ status: 'ok', version: '0.1.0', timestamp: new Date().toISOString() })
 );
 
-// Temporary debug endpoint — remove after confirming env vars are injected
-app.get('/debug/env', (c: any) => {
-  const e = c.env ?? {};
-  return c.json({
-    via_getEnv: {
-      has_supabase_url:     !!getEnv('SUPABASE_URL'),
-      has_service_role_key: !!getEnv('SUPABASE_SERVICE_ROLE_KEY'),
-      has_anon_key:         !!getEnv('SUPABASE_ANON_KEY'),
-      has_jwt_secret:       !!getEnv('JWT_SECRET'),
-      has_jwt_refresh:      !!getEnv('JWT_REFRESH_SECRET'),
-    },
-    via_c_env: {
-      has_supabase_url:     !!e.SUPABASE_URL,
-      has_service_role_key: !!e.SUPABASE_SERVICE_ROLE_KEY,
-      has_anon_key:         !!e.SUPABASE_ANON_KEY,
-      has_jwt_secret:       !!e.JWT_SECRET,
-      has_jwt_refresh:      !!e.JWT_REFRESH_SECRET,
-    },
-    node_env:        getEnv('NODE_ENV'),
-    frontend_url:    !!getEnv('FRONTEND_URL'),
-    enumerable_keys: Object.keys(e),
-  });
-});
-
 app.notFound((c: any) => c.json({ error: 'Route not found' }, 404));
 
 app.onError((err: any, c: any) => {
   console.error('[unhandled error]', err);
-  // Temporary: return real error message for debugging
-  return c.json({ error: err?.message ?? String(err), stack: err?.stack?.split('\n').slice(0,3) }, 500);
+  return c.json({ error: 'Internal server error' }, 500);
 });
 
 // ─── Cloudflare Workers export ────────────────────────────────────────────────
@@ -104,21 +79,6 @@ app.onError((err: any, c: any) => {
 
 export default {
   fetch(request: Request, env: Record<string, string>, ctx: ExecutionContext) {
-    // Raw debug — bypass Hono entirely to test env access directly
-    const url = new URL(request.url);
-    if (url.pathname === '/debug/raw') {
-      return new Response(JSON.stringify({
-        enumerable_keys: Object.keys(env),
-        supabase_url:     !!env.SUPABASE_URL,
-        service_role_key: !!env.SUPABASE_SERVICE_ROLE_KEY,
-        anon_key:         !!env.SUPABASE_ANON_KEY,
-        jwt_secret:       !!env.JWT_SECRET,
-        jwt_refresh:      !!env.JWT_REFRESH_SECRET,
-        frontend_url:     !!env.FRONTEND_URL,
-        node_env:         env.NODE_ENV,
-      }), { headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } });
-    }
-
     setCFEnv(env);
     return app.fetch(request, env, ctx);
   },
