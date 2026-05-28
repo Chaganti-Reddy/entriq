@@ -3,6 +3,7 @@
 // Sends the QR entry pass to registrants.
 
 import { Resend } from 'resend';
+import { getEnv } from '../lib/env.js';
 
 // Lazy init — Resend client is created on first email send so CF Workers
 // env bindings are available at request time.
@@ -10,7 +11,7 @@ let resend: Resend | null = null;
 
 function getResend(): Resend | null {
   if (resend) return resend;
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = getEnv('RESEND_API_KEY');
   if (!apiKey) {
     console.warn('[email] RESEND_API_KEY not set — emails will not be sent');
     return null;
@@ -21,8 +22,7 @@ function getResend(): Resend | null {
 
 // From address — must be a verified domain in Resend.
 // Use onboarding@resend.dev for testing without a custom domain.
-const getFromAddress = () =>
-  process.env.EMAIL_FROM ?? 'Entriq <onboarding@resend.dev>';
+const getFromAddress = () => getEnv('EMAIL_FROM') || 'Entriq <onboarding@resend.dev>';
 
 interface SendQREmailParams {
   to: string;

@@ -10,9 +10,10 @@ import { requireRole } from '../middleware/roles.js';
 import type { AppEnv } from '../types/index.js';
 import type { AuthResponse, OrgStatus } from '@entriq/shared';
 import { SignJWT } from 'jose';
+import { getEnv } from '../lib/env.js';
 
-const JWT_SECRET         = () => new TextEncoder().encode(process.env.JWT_SECRET!);
-const JWT_REFRESH_SECRET = () => new TextEncoder().encode(process.env.JWT_REFRESH_SECRET!);
+const JWT_SECRET         = () => new TextEncoder().encode(getEnv('JWT_SECRET'));
+const JWT_REFRESH_SECRET = () => new TextEncoder().encode(getEnv('JWT_REFRESH_SECRET'));
 
 export const userRouter = new Hono<AppEnv>();
 

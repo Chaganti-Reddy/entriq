@@ -10,6 +10,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { prettyJSON } from 'hono/pretty-json';
+import { setCFEnv, getEnv } from './lib/env.js';
 import { authRouter } from './routes/auth.js';
 import { eventsRouter } from './routes/events.js';
 import { registrationsRouter } from './routes/registrations.js';
@@ -67,13 +68,12 @@ app.get('/health', (c: any) =>
 
 // Temporary debug endpoint — remove after confirming env vars are injected
 app.get('/debug/env', (c: any) => c.json({
-  has_supabase_url:      !!process.env.SUPABASE_URL,
-  has_service_role_key:  !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-  has_anon_key:          !!process.env.SUPABASE_ANON_KEY,
-  has_jwt_secret:        !!process.env.JWT_SECRET,
-  has_jwt_refresh:       !!process.env.JWT_REFRESH_SECRET,
-  node_env:              process.env.NODE_ENV,
-  injected:              process.env.__CF_INJECTED__,
+  has_supabase_url:      !!getEnv('SUPABASE_URL'),
+  has_service_role_key:  !!getEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  has_anon_key:          !!getEnv('SUPABASE_ANON_KEY'),
+  has_jwt_secret:        !!getEnv('JWT_SECRET'),
+  has_jwt_refresh:       !!getEnv('JWT_REFRESH_SECRET'),
+  node_env:              getEnv('NODE_ENV'),
 }));
 
 app.notFound((c: any) => c.json({ error: 'Route not found' }, 404));
@@ -90,12 +90,8 @@ app.onError((err: any, c: any) => {
 
 export default {
   fetch(request: Request, env: Record<string, string>, ctx: ExecutionContext) {
-    // Inject CF secrets/vars into process.env before any handler reads them.
-    // Only runs once per isolate cold-start after which process.env is populated.
-    if (!process.env.__CF_INJECTED__) {
-      Object.assign(process.env, env);
-      process.env.__CF_INJECTED__ = '1';
-    }
+    // Inject CF bindings on every request — process.env doesn't get CF secrets
+    setCFEnv(env);
     return app.fetch(request, env, ctx);
   },
 };

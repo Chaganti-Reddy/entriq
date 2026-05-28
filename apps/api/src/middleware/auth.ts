@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import { jwtVerify, errors as joseErrors } from 'jose';
 import type { JWTPayload } from '@entriq/shared';
 import type { AppEnv } from '../types/index.js';
+import { getEnv } from '../lib/env.js';
 
 export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   const authHeader = c.req.header('Authorization');
@@ -11,7 +12,7 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   const token = authHeader.slice(7);
-  const secret = process.env.JWT_SECRET;
+  const secret = getEnv('JWT_SECRET');
   if (!secret) return c.json({ error: 'Server misconfiguration' }, 500);
 
   try {

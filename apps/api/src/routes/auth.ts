@@ -11,10 +11,11 @@ import { db, anonDb } from '../services/db.js';
 import { authLimiter } from '../middleware/ratelimit.js';
 import type { AppEnv } from '../types/index.js';
 import type { JWTPayload, OrgStatus, AuthResponse } from '@entriq/shared';
+import { getEnv } from '../lib/env.js';
 
-const JWT_SECRET         = () => new TextEncoder().encode(process.env.JWT_SECRET!);
-const JWT_REFRESH_SECRET = () => new TextEncoder().encode(process.env.JWT_REFRESH_SECRET!);
-const APP_URL            = () => process.env.FRONTEND_URL ?? 'http://localhost:3000';
+const JWT_SECRET         = () => new TextEncoder().encode(getEnv('JWT_SECRET'));
+const JWT_REFRESH_SECRET = () => new TextEncoder().encode(getEnv('JWT_REFRESH_SECRET'));
+const APP_URL            = () => getEnv('FRONTEND_URL') || 'http://localhost:3000';
 
 const ACCESS_TOKEN_TTL  = '15m';
 const REFRESH_TOKEN_TTL = '30d';

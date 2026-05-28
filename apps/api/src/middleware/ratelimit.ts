@@ -5,6 +5,7 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import type { MiddlewareHandler } from 'hono';
+import { getEnv } from '../lib/env.js';
 
 // Lazy singleton — Redis client created on first request so CF Workers
 // env bindings are available at request time.
@@ -14,8 +15,8 @@ let redisInitialized = false;
 function getRedis(): Redis | null {
   if (redisInitialized) return redis;
   redisInitialized = true;
-  const url   = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url   = getEnv('UPSTASH_REDIS_REST_URL');
+  const token = getEnv('UPSTASH_REDIS_REST_TOKEN');
   if (url && token) {
     redis = new Redis({ url, token });
   } else {

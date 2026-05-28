@@ -4,6 +4,7 @@
 //  - anonDb    (anon key)     — used for Supabase Auth operations (signUp, signIn).
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { getEnv } from '../lib/env.js';
 
 const clientOpts = {
   auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
@@ -16,8 +17,8 @@ let _anonDb: SupabaseClient | null = null;
 
 function getInstance(): SupabaseClient {
   if (!_db) {
-    const url = process.env.SUPABASE_URL!;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const url = getEnv('SUPABASE_URL');
+    const key = getEnv('SUPABASE_SERVICE_ROLE_KEY');
     if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
     _db = createClient(url, key, clientOpts);
   }
@@ -26,8 +27,8 @@ function getInstance(): SupabaseClient {
 
 function getAnonInstance(): SupabaseClient {
   if (!_anonDb) {
-    const url     = process.env.SUPABASE_URL!;
-    const anonKey = process.env.SUPABASE_ANON_KEY!;
+    const url     = getEnv('SUPABASE_URL');
+    const anonKey = getEnv('SUPABASE_ANON_KEY');
     if (!url || !anonKey) throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY');
     _anonDb = createClient(url, anonKey, clientOpts);
   }
