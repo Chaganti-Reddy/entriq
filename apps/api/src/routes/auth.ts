@@ -160,9 +160,17 @@ authRouter.post('/signup', authLimiter, zValidator('json', userSignupSchema), as
 
   if (!data.user) return c.json({ error: 'Signup failed' }, 500);
 
+  const userId = data.user.id;
+
+  // Ensure user profile exists — trigger may be delayed or failed
+  await db.from('users').upsert(
+    { id: userId, name, email },
+    { onConflict: 'id', ignoreDuplicates: true }
+  );
+
   // Dev mode: email confirm disabled — Supabase auto-confirmed the user
   if (data.user.email_confirmed_at && data.session) {
-    const res = await buildAuthResponse(data.user.id);
+    const res = await buildAuthResponse(userId);
     if (!res) return c.json({ error: 'Profile not found' }, 500);
     return c.json(res, 201);
   }
