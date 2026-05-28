@@ -1,4 +1,4 @@
-// apps/api/src/routes/auth.ts
+﻿// apps/api/src/routes/auth.ts
 // Authentication: Supabase Auth for email/password + our custom JWT for org role info.
 // Super admin uses a separate bcrypt-based flow (not in auth.users).
 
@@ -12,12 +12,9 @@ import { authLimiter } from '../middleware/ratelimit.js';
 import type { AppEnv } from '../types/index.js';
 import type { JWTPayload, OrgStatus, AuthResponse } from '@entriq/shared';
 
-const JWT_SECRET         = process.env.JWT_SECRET;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
-const APP_URL            = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-
-if (!JWT_SECRET)         throw new Error('Missing JWT_SECRET environment variable');
-if (!JWT_REFRESH_SECRET) throw new Error('Missing JWT_REFRESH_SECRET environment variable');
+const JWT_SECRET         = () => process.env.JWT_SECRET!;
+const JWT_REFRESH_SECRET = () => process.env.JWT_REFRESH_SECRET!;
+const APP_URL            = () => process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
 const ACCESS_TOKEN_TTL  = '15m';
 const REFRESH_TOKEN_TTL = '30d';
@@ -74,8 +71,8 @@ function buildUserPayload(
 }
 
 function buildTokens(payload: JWTPayload, refreshSub: string, refreshType = 'refresh') {
-  const token        = jwt.sign(payload, JWT_SECRET as string, { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ sub: refreshSub, type: refreshType }, JWT_REFRESH_SECRET as string, { expiresIn: REFRESH_TOKEN_TTL });
+  const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: ACCESS_TOKEN_TTL });
+  const refreshToken = jwt.sign({ sub: refreshSub, type: refreshType }, JWT_REFRESH_SECRET(), { expiresIn: REFRESH_TOKEN_TTL });
   return { token, refreshToken };
 }
 
@@ -140,7 +137,7 @@ authRouter.post('/signup', authLimiter, zValidator('json', userSignupSchema), as
     password,
     options: {
       data: { name },
-      emailRedirectTo: `${APP_URL}/auth/callback`,
+      emailRedirectTo: `${APP_URL()}/auth/callback`,
     },
   });
 
@@ -183,7 +180,7 @@ authRouter.post('/signup/org', authLimiter, zValidator('json', orgSignupSchema),
     password,
     options: {
       data: { name: adminName },
-      emailRedirectTo: `${APP_URL}/auth/callback`,
+      emailRedirectTo: `${APP_URL()}/auth/callback`,
     },
   });
 
@@ -311,8 +308,8 @@ authRouter.post('/super-admin/login', authLimiter, zValidator('json', superAdmin
   if (!valid) return c.json({ error: 'Invalid email or password' }, 401);
 
   const payload: JWTPayload = { sub: sa.id, email: sa.email, name: sa.name, role: 'super_admin' };
-  const token        = jwt.sign(payload, JWT_SECRET as string, { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ sub: sa.id, type: 'refresh_sa' }, JWT_REFRESH_SECRET as string, { expiresIn: REFRESH_TOKEN_TTL });
+  const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: ACCESS_TOKEN_TTL });
+  const refreshToken = jwt.sign({ sub: sa.id, type: 'refresh_sa' }, JWT_REFRESH_SECRET(), { expiresIn: REFRESH_TOKEN_TTL });
 
   return c.json({ token, refreshToken, admin: { id: sa.id, name: sa.name, email: sa.email } });
 });
@@ -321,13 +318,13 @@ authRouter.post('/super-admin/login', authLimiter, zValidator('json', superAdmin
 authRouter.post('/refresh', zValidator('json', refreshSchema), async (c) => {
   const { refreshToken } = c.req.valid('json');
   try {
-    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET as string) as { sub: string; type: string };
+    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET()) as { sub: string; type: string };
 
     if (decoded.type === 'refresh_sa') {
       const { data: sa } = await db.from('super_admins').select('id, name, email').eq('id', decoded.sub).maybeSingle();
       if (!sa) return c.json({ error: 'Account not found' }, 401);
       const payload: JWTPayload = { sub: sa.id, email: sa.email, name: sa.name, role: 'super_admin' };
-      const accessToken = jwt.sign(payload, JWT_SECRET as string, { expiresIn: ACCESS_TOKEN_TTL });
+      const accessToken = jwt.sign(payload, JWT_SECRET(), { expiresIn: ACCESS_TOKEN_TTL });
       return c.json({ token: accessToken });
     }
 

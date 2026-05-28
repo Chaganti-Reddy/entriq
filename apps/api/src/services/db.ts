@@ -3,24 +3,42 @@
 //  - db        (service role) — full DB access, bypasses RLS. Never expose to clients.
 //  - anonDb    (anon key)     — used for Supabase Auth operations (signUp, signIn).
 
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl     = process.env.SUPABASE_URL;
-const supabaseKey     = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey)     throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-if (!supabaseAnonKey)                 throw new Error('Missing SUPABASE_ANON_KEY environment variable');
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const clientOpts = {
   auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
 };
 
+// Lazy singletons — deferred until first use so CF Workers env bindings
+// are available at request time rather than module initialisation time.
+let _db: SupabaseClient | null = null;
+let _anonDb: SupabaseClient | null = null;
+
+function getInstance(): SupabaseClient {
+  if (!_db) {
+    const url = process.env.SUPABASE_URL!;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    _db = createClient(url, key, clientOpts);
+  }
+  return _db;
+}
+
+function getAnonInstance(): SupabaseClient {
+  if (!_anonDb) {
+    const url     = process.env.SUPABASE_URL!;
+    const anonKey = process.env.SUPABASE_ANON_KEY!;
+    if (!url || !anonKey) throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY');
+    _anonDb = createClient(url, anonKey, clientOpts);
+  }
+  return _anonDb;
+}
+
 /** Service-role client — use for all DB queries (bypasses RLS). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const db = createClient(supabaseUrl, supabaseKey, clientOpts);
+export const db      = new Proxy({} as SupabaseClient, { get: (_, p) => (getInstance() as any)[p] });
 
 /** Anon client — use for auth operations (signUp, signInWithPassword, getUser). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const anonDb = createClient(supabaseUrl, supabaseAnonKey, clientOpts);
+export const anonDb  = new Proxy({} as SupabaseClient, { get: (_, p) => (getAnonInstance() as any)[p] });
 

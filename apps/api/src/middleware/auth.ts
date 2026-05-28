@@ -1,16 +1,7 @@
-// apps/api/src/middleware/auth.ts
-// JWT authentication middleware — verifies Bearer token and attaches user payload to context.
-
 import type { MiddlewareHandler } from 'hono';
 import { verify } from 'jsonwebtoken';
 import type { JWTPayload } from '@entriq/shared';
 import type { AppEnv } from '../types/index.js';
-
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET) {
-  throw new Error('Missing JWT_SECRET environment variable');
-}
 
 export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   const authHeader = c.req.header('Authorization');
@@ -20,6 +11,8 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   const token = authHeader.slice(7);
+  const JWT_SECRET = process.env.JWT_SECRET;
+  if (!JWT_SECRET) return c.json({ error: 'Server misconfiguration' }, 500);
 
   try {
     const payload = verify(token, JWT_SECRET) as JWTPayload;

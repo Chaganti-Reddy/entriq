@@ -4,20 +4,24 @@
 
 import { Resend } from 'resend';
 
-const resendApiKey = process.env.RESEND_API_KEY;
-
-// Lazy init — warn in dev, don't crash the server if Resend isn't configured.
-// Email sending will simply log an error and leave email_sent=false in the DB.
+// Lazy init — Resend client is created on first email send so CF Workers
+// env bindings are available at request time.
 let resend: Resend | null = null;
-if (resendApiKey) {
-  resend = new Resend(resendApiKey);
-} else {
-  console.warn('[email] RESEND_API_KEY not set — emails will not be sent');
+
+function getResend(): Resend | null {
+  if (resend) return resend;
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn('[email] RESEND_API_KEY not set — emails will not be sent');
+    return null;
+  }
+  resend = new Resend(apiKey);
+  return resend;
 }
 
 // From address — must be a verified domain in Resend.
 // Use onboarding@resend.dev for testing without a custom domain.
-const FROM_ADDRESS =
+const getFromAddress = () =>
   process.env.EMAIL_FROM ?? 'Entriq <onboarding@resend.dev>';
 
 interface SendQREmailParams {
@@ -41,6 +45,7 @@ export async function sendQREmail(params: SendQREmailParams): Promise<void> {
     qrUrl,
   } = params;
 
+  if (!resend) resend = getResend();
   if (!resend) {
     console.warn('[email] Skipping email send — RESEND_API_KEY not configured');
     return;
@@ -65,7 +70,7 @@ export async function sendQREmail(params: SendQREmailParams): Promise<void> {
   });
 
   const { error } = await resend.emails.send({
-    from: FROM_ADDRESS,
+    from: getFromAddress(),
     to,
     subject: `Your QR Entry Pass — ${eventName}`,
     html,

@@ -1,0 +1,28 @@
+name = "entriq-api"
+main = "src/worker.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat_v2"]
+
+# ─── Bindings (non-secret vars) ──────────────────────────────────────────────
+# Put ONLY non-sensitive values here.
+# Secrets (API keys, JWT secrets) must be set via:  wrangler secret put VAR_NAME
+
+[vars]
+NODE_ENV = "production"
+# FRONTEND_URL = "https://your-domain.vercel.app"   # uncomment after Vercel deploy
+
+# ─── Secrets (run these commands to set them) ─────────────────────────────────
+# wrangler secret put SUPABASE_URL
+# wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# wrangler secret put SUPABASE_ANON_KEY
+# wrangler secret put JWT_SECRET
+# wrangler secret put JWT_REFRESH_SECRET
+# wrangler secret put RESEND_API_KEY
+# wrangler secret put EMAIL_FROM
+# wrangler secret put UPSTASH_REDIS_REST_URL
+# wrangler secret put UPSTASH_REDIS_REST_TOKEN
+
+# ─── Development ─────────────────────────────────────────────────────────────
+[dev]
+port = 8787
+local_protocol = "http"

@@ -6,12 +6,23 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import type { MiddlewareHandler } from 'hono';
 
-const url = process.env.UPSTASH_REDIS_REST_URL;
-const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+// Lazy singleton — Redis client created on first request so CF Workers
+// env bindings are available at request time.
+let redis: Redis | null = null;
+let redisInitialized = false;
 
-// Gracefully degrade: if Upstash is not configured, skip rate limiting.
-// This allows local dev without Upstash setup.
-const redis = url && token ? new Redis({ url, token }) : null;
+function getRedis(): Redis | null {
+  if (redisInitialized) return redis;
+  redisInitialized = true;
+  const url   = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) {
+    redis = new Redis({ url, token });
+  } else {
+    console.warn('[ratelimit] Upstash not configured — rate limiting disabled');
+  }
+  return redis;
+}
 
 /**
  * Creates a rate limiter middleware.
@@ -25,18 +36,19 @@ export function rateLimiter(
   window: `${number} ${'ms' | 's' | 'm' | 'h' | 'd'}`,
   prefix: string
 ): MiddlewareHandler {
-  if (!redis) {
-    // No Redis configured — pass through (dev mode)
-    return async (_c, next) => await next();
-  }
-
-  const limiter = new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(requests, window),
-    prefix: `entriq:${prefix}`,
-  });
+  let limiter: Ratelimit | null = null;
 
   return async (c, next) => {
+    const r = getRedis();
+    if (!r) return next();
+
+    if (!limiter) {
+      limiter = new Ratelimit({
+        redis: r,
+        limiter: Ratelimit.slidingWindow(requests, window),
+        prefix: `entriq:${prefix}`,
+      });
+    }
     // Use X-Forwarded-For first (for proxied requests on Railway/Vercel),
     // then fall back to the direct connection IP.
     const ip =

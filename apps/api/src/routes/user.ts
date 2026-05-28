@@ -1,4 +1,4 @@
-// apps/api/src/routes/user.ts
+﻿// apps/api/src/routes/user.ts
 // User-specific routes: profile, password, org settings, registrations, create org.
 
 import { Hono } from 'hono';
@@ -11,8 +11,8 @@ import type { AppEnv } from '../types/index.js';
 import type { AuthResponse, OrgStatus } from '@entriq/shared';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET         = process.env.JWT_SECRET;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const JWT_SECRET         = () => process.env.JWT_SECRET!;
+const JWT_REFRESH_SECRET = () => process.env.JWT_REFRESH_SECRET!;
 
 export const userRouter = new Hono<AppEnv>();
 
@@ -75,8 +75,8 @@ userRouter.patch(
         orgId: user.orgId, orgName: user.orgName, orgStatus: user.orgStatus,
       }),
     };
-    const token        = jwt.sign(payload, JWT_SECRET as string, { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ sub: user.sub, type: 'refresh' }, JWT_REFRESH_SECRET as string, { expiresIn: '30d' });
+    const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ sub: user.sub, type: 'refresh' }, JWT_REFRESH_SECRET(), { expiresIn: '30d' });
 
     const res: AuthResponse = {
       token, refreshToken,
@@ -167,8 +167,8 @@ userRouter.patch(
       memberId: user.memberId, role: user.role,
       orgId: user.orgId, orgName: newOrgName, orgStatus: user.orgStatus,
     };
-    const token        = jwt.sign(payload, JWT_SECRET as string, { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ sub: user.sub, type: 'refresh' }, JWT_REFRESH_SECRET as string, { expiresIn: '30d' });
+    const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ sub: user.sub, type: 'refresh' }, JWT_REFRESH_SECRET(), { expiresIn: '30d' });
 
     const res: AuthResponse = {
       token, refreshToken,
@@ -225,8 +225,8 @@ userRouter.post(
       memberId: member.id, role: member.role,
       orgId: org.id, orgName: org.name, orgStatus: org.status as OrgStatus,
     };
-    const token        = jwt.sign(payload, JWT_SECRET as string, { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ sub: userId, type: 'refresh' }, JWT_REFRESH_SECRET as string, { expiresIn: '30d' });
+    const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ sub: userId, type: 'refresh' }, JWT_REFRESH_SECRET(), { expiresIn: '30d' });
 
     const res: AuthResponse = {
       token, refreshToken,
