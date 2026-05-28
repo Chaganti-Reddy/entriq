@@ -65,11 +65,23 @@ app.get('/health', (c: any) =>
   c.json({ status: 'ok', version: '0.1.0', timestamp: new Date().toISOString() })
 );
 
+// Temporary debug endpoint — remove after confirming env vars are injected
+app.get('/debug/env', (c: any) => c.json({
+  has_supabase_url:      !!process.env.SUPABASE_URL,
+  has_service_role_key:  !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  has_anon_key:          !!process.env.SUPABASE_ANON_KEY,
+  has_jwt_secret:        !!process.env.JWT_SECRET,
+  has_jwt_refresh:       !!process.env.JWT_REFRESH_SECRET,
+  node_env:              process.env.NODE_ENV,
+  injected:              process.env.__CF_INJECTED__,
+}));
+
 app.notFound((c: any) => c.json({ error: 'Route not found' }, 404));
 
 app.onError((err: any, c: any) => {
   console.error('[unhandled error]', err);
-  return c.json({ error: 'Internal server error' }, 500);
+  // Temporary: return real error message for debugging
+  return c.json({ error: err?.message ?? String(err), stack: err?.stack?.split('\n').slice(0,3) }, 500);
 });
 
 // ─── Cloudflare Workers export ────────────────────────────────────────────────
