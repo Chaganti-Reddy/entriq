@@ -138,3 +138,38 @@ $$;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
+-- ─── ORPHAN ORG CLEANUP TRIGGER ──────────────────────────────────────────────
+-- When a user is deleted, their org_members row cascades away.
+-- If they were the sole admin, the org becomes unmanageable → delete it.
+-- This fires AFTER the org_members row is removed (via the user CASCADE).
+CREATE OR REPLACE FUNCTION public.handle_org_member_deleted()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  remaining_admins INT;
+BEGIN
+  -- Only act when an admin member was removed
+  IF OLD.role <> 'admin' THEN
+    RETURN OLD;
+  END IF;
+
+  -- Count remaining active admins in the org
+  SELECT COUNT(*) INTO remaining_admins
+  FROM public.org_members
+  WHERE org_id = OLD.org_id AND role = 'admin';
+
+  -- If none left, cascade-delete the org (events + registrations follow via FK)
+  IF remaining_admins = 0 THEN
+    DELETE FROM public.orgs WHERE id = OLD.org_id;
+  END IF;
+
+  RETURN OLD;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER on_org_member_deleted
+  AFTER DELETE ON public.org_members
+  FOR EACH ROW EXECUTE FUNCTION public.handle_org_member_deleted();
