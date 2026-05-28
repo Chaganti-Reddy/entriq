@@ -3,9 +3,7 @@
 
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -44,7 +42,7 @@ const statusBadge: Record<OrgStatus, { label: string; cls: string }> = {
   suspended: { label: 'Suspended', cls: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
 };
 
-export default function SuperAdminOrgsPage() {
+function OrgsContent() {
   const qc           = useQueryClient();
   const searchParams = useSearchParams();
   const [filter, setFilter] = useState<OrgStatus | 'all'>('all');
@@ -231,5 +229,13 @@ export default function SuperAdminOrgsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SuperAdminOrgsPage() {
+  return (
+    <Suspense>
+      <OrgsContent />
+    </Suspense>
   );
 }

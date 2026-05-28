@@ -1,9 +1,7 @@
-// apps/web/app/(auth)/signup/page.tsx
+﻿// apps/web/app/(auth)/signup/page.tsx
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -21,8 +19,6 @@ import { cn } from '@/lib/utils';
 import type { AuthResponse } from '@entriq/shared';
 
 type Mode = 'participant' | 'org';
-
-// ─── Schemas ──────────────────────────────────────────────────────────────────
 
 const participantSchema = z.object({
   name:            z.string().min(2, 'Name must be at least 2 characters').max(100),
@@ -42,7 +38,7 @@ const orgSchema = z.object({
 type ParticipantForm = z.infer<typeof participantSchema>;
 type OrgForm = z.infer<typeof orgSchema>;
 
-export default function SignupPage() {
+function SignupForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const { setAuth }  = useAuthStore();
@@ -63,7 +59,6 @@ export default function SignupPage() {
         setCheckEmail({ email: res.email ?? data.email });
         return;
       }
-      // Dev mode: auto-confirmed
       setAuth(res.token, res.refreshToken, res.user);
       toast.success('Account created! Welcome to Entriq.');
       const redirect = searchParams.get('redirect');
@@ -87,7 +82,6 @@ export default function SignupPage() {
         setCheckEmail({ email: res.email ?? data.email, orgPending: res.orgPending });
         return;
       }
-      // Dev mode: auto-confirmed
       setAuth(res.token, res.refreshToken, res.user);
       toast.success('Organisation registered! Awaiting admin approval.');
       router.push('/pending-approval');
@@ -99,7 +93,6 @@ export default function SignupPage() {
     }
   }
 
-  // ─── Check email screen ────────────────────────────────────────────────────
   if (checkEmail) {
     return (
       <div className="w-full max-w-sm animate-slide-up">
@@ -139,11 +132,10 @@ export default function SignupPage() {
           <p className="text-sm text-zinc-400 mt-1">Choose how you want to use Entriq</p>
         </div>
 
-        {/* Mode selector */}
         <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 rounded-xl mb-6">
           {([
-            { id: 'participant' as Mode, icon: Users,      label: 'Attend Events',        desc: 'Register & track events' },
-            { id: 'org'         as Mode, icon: Building2,  label: 'Run an Organisation',  desc: 'Create & manage events' },
+            { id: 'participant' as Mode, icon: Users,     label: 'Attend Events',       desc: 'Register & track events' },
+            { id: 'org'         as Mode, icon: Building2, label: 'Run an Organisation', desc: 'Create & manage events' },
           ] as const).map(({ id, icon: Icon, label, desc }) => (
             <button
               key={id}
@@ -163,7 +155,6 @@ export default function SignupPage() {
           ))}
         </div>
 
-        {/* Participant form */}
         {mode === 'participant' && (
           <form onSubmit={participantForm.handleSubmit(handleParticipant)} className="space-y-4">
             <div>
@@ -191,12 +182,11 @@ export default function SignupPage() {
               {participantForm.formState.errors.confirmPassword && <p className="text-xs text-red-400 mt-1">{participantForm.formState.errors.confirmPassword.message}</p>}
             </div>
             <Button type="submit" className="w-full h-11 mt-2" disabled={loading}>
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating account…</> : 'Create account →'}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating account&hellip;</> : 'Create account →'}
             </Button>
           </form>
         )}
 
-        {/* Org form */}
         {mode === 'org' && (
           <form onSubmit={orgForm.handleSubmit(handleOrg)} className="space-y-4">
             <div>
@@ -233,7 +223,7 @@ export default function SignupPage() {
               ⚠️ Your organisation will need to be approved by the platform admin before you can access the dashboard.
             </p>
             <Button type="submit" className="w-full h-11 mt-2" disabled={loading}>
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Registering…</> : 'Register organisation →'}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Registering&hellip;</> : 'Register organisation →'}
             </Button>
           </form>
         )}
@@ -247,3 +237,10 @@ export default function SignupPage() {
   );
 }
 
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
+  );
+}

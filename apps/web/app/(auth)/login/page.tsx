@@ -1,8 +1,7 @@
-// apps/web/app/(auth)/login/page.tsx
+﻿// apps/web/app/(auth)/login/page.tsx
 'use client';
 
-export const dynamic = 'force-dynamic';
-
+import { Suspense } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -26,7 +25,7 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-export default function LoginPage() {
+function LoginForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const { setAuth }  = useAuthStore();
@@ -47,7 +46,6 @@ export default function LoginPage() {
       setAuth(res.token, res.refreshToken, res.user);
       toast.success(`Welcome back, ${res.user.name}!`);
 
-      // Routing logic:
       const redirect = searchParams.get('redirect');
       if (res.user.role && res.user.orgStatus) {
         if (res.user.orgStatus === 'approved') {
@@ -56,7 +54,6 @@ export default function LoginPage() {
           router.push('/pending-approval');
         }
       } else {
-        // Plain participant — go to redirect target or my-events
         router.push(redirect ?? '/my-events');
       }
     } catch (err: unknown) {
@@ -65,7 +62,7 @@ export default function LoginPage() {
       if (status === 401) {
         setGlobalError('Invalid email or password. Please try again.');
       } else if (status === 403) {
-        setGlobalError(msg); // "Please verify your email first…"
+        setGlobalError(msg);
       } else {
         toast.error(msg);
       }
@@ -105,7 +102,7 @@ export default function LoginPage() {
           </div>
 
           <Button type="submit" className="w-full h-11" disabled={loading}>
-            {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</> : 'Sign in →'}
+            {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in&hellip;</> : 'Sign in →'}
           </Button>
         </form>
 
@@ -117,5 +114,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
