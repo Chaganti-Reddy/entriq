@@ -9,10 +9,10 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roles.js';
 import type { AppEnv } from '../types/index.js';
 import type { AuthResponse, OrgStatus } from '@entriq/shared';
-import jwt from 'jsonwebtoken';
+import { SignJWT } from 'jose';
 
-const JWT_SECRET         = () => process.env.JWT_SECRET!;
-const JWT_REFRESH_SECRET = () => process.env.JWT_REFRESH_SECRET!;
+const JWT_SECRET         = () => new TextEncoder().encode(process.env.JWT_SECRET!);
+const JWT_REFRESH_SECRET = () => new TextEncoder().encode(process.env.JWT_REFRESH_SECRET!);
 
 export const userRouter = new Hono<AppEnv>();
 
@@ -75,8 +75,16 @@ userRouter.patch(
         orgId: user.orgId, orgName: user.orgName, orgStatus: user.orgStatus,
       }),
     };
-    const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ sub: user.sub, type: 'refresh' }, JWT_REFRESH_SECRET(), { expiresIn: '30d' });
+    const token = await new SignJWT(payload as Record<string, unknown>)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('15m')
+      .sign(JWT_SECRET());
+    const refreshToken = await new SignJWT({ sub: user.sub, type: 'refresh' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('30d')
+      .sign(JWT_REFRESH_SECRET());
 
     const res: AuthResponse = {
       token, refreshToken,
@@ -167,8 +175,16 @@ userRouter.patch(
       memberId: user.memberId, role: user.role,
       orgId: user.orgId, orgName: newOrgName, orgStatus: user.orgStatus,
     };
-    const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ sub: user.sub, type: 'refresh' }, JWT_REFRESH_SECRET(), { expiresIn: '30d' });
+    const token = await new SignJWT(payload as Record<string, unknown>)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('15m')
+      .sign(JWT_SECRET());
+    const refreshToken = await new SignJWT({ sub: user.sub, type: 'refresh' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('30d')
+      .sign(JWT_REFRESH_SECRET());
 
     const res: AuthResponse = {
       token, refreshToken,
@@ -225,8 +241,16 @@ userRouter.post(
       memberId: member.id, role: member.role,
       orgId: org.id, orgName: org.name, orgStatus: org.status as OrgStatus,
     };
-    const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ sub: userId, type: 'refresh' }, JWT_REFRESH_SECRET(), { expiresIn: '30d' });
+    const token = await new SignJWT(payload as Record<string, unknown>)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('15m')
+      .sign(JWT_SECRET());
+    const refreshToken = await new SignJWT({ sub: userId, type: 'refresh' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('30d')
+      .sign(JWT_REFRESH_SECRET());
 
     const res: AuthResponse = {
       token, refreshToken,

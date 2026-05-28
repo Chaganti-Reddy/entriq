@@ -1,4 +1,4 @@
-﻿// apps/api/src/routes/auth.ts
+// apps/api/src/routes/auth.ts
 // Authentication: Supabase Auth for email/password + our custom JWT for org role info.
 // Super admin uses a separate bcrypt-based flow (not in auth.users).
 
@@ -71,7 +71,7 @@ function buildUserPayload(
 }
 
 async function buildTokens(payload: JWTPayload, refreshSub: string, refreshType = 'refresh') {
-  const token = await new SignJWT(payload as Record<string, unknown>)
+  const token = await new SignJWT(payload as unknown as Record<string, unknown>)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(ACCESS_TOKEN_TTL)
@@ -110,7 +110,7 @@ async function buildAuthResponse(userId: string): Promise<AuthResponse | null> {
   }
 
   const payload = buildUserPayload(user, member ?? null, org);
-  const { token, refreshToken } = buildTokens(payload, user.id);
+  const { token, refreshToken } = await buildTokens(payload, user.id);
 
   return {
     token,
@@ -240,7 +240,7 @@ authRouter.post('/signup/org', authLimiter, zValidator('json', orgSignupSchema),
       { id: member.id, role: member.role, org_id: org.id },
       { id: org.id, name: org.name, status: 'pending' },
     );
-    const { token, refreshToken } = buildTokens(payload, userId);
+    const { token, refreshToken } = await buildTokens(payload, userId);
     return c.json({
       token, refreshToken,
       user: { id: userId, name: adminName, email, memberId: member.id, role: member.role, orgId: org.id, orgName: org.name, orgStatus: 'pending' },
@@ -316,7 +316,7 @@ authRouter.post('/super-admin/login', authLimiter, zValidator('json', superAdmin
   if (!valid) return c.json({ error: 'Invalid email or password' }, 401);
 
   const payload: JWTPayload = { sub: sa.id, email: sa.email, name: sa.name, role: 'super_admin' };
-  const token = await new SignJWT(payload as Record<string, unknown>)
+  const token = await new SignJWT(payload as unknown as Record<string, unknown>)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(ACCESS_TOKEN_TTL)
@@ -342,7 +342,7 @@ authRouter.post('/refresh', zValidator('json', refreshSchema), async (c) => {
       const { data: sa } = await db.from('super_admins').select('id, name, email').eq('id', sub).maybeSingle();
       if (!sa) return c.json({ error: 'Account not found' }, 401);
       const payload: JWTPayload = { sub: sa.id, email: sa.email, name: sa.name, role: 'super_admin' };
-      const accessToken = await new SignJWT(payload as Record<string, unknown>)
+      const accessToken = await new SignJWT(payload as unknown as Record<string, unknown>)
         .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
         .setExpirationTime(ACCESS_TOKEN_TTL)
