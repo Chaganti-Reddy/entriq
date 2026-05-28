@@ -121,7 +121,9 @@ ALTER TABLE checkins       ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS trigger
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = public
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off   -- bypass RLS: trigger runs as postgres (superuser)
 AS $$
 BEGIN
   INSERT INTO public.users (id, name, email)
@@ -131,6 +133,11 @@ BEGIN
     NEW.email
   )
   ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Never block auth.users INSERT — profile creation is best-effort.
+  -- The API upserts the profile as a fallback on login/exchange/signup.
+  RAISE WARNING 'handle_new_auth_user failed for user %: %', NEW.id, SQLERRM;
   RETURN NEW;
 END;
 $$;
@@ -146,7 +153,9 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 CREATE OR REPLACE FUNCTION public.handle_org_member_deleted()
 RETURNS trigger
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = public
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off   -- bypass RLS
 AS $$
 DECLARE
   remaining_admins INT;

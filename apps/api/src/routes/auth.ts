@@ -279,7 +279,16 @@ authRouter.post('/login', authLimiter, zValidator('json', loginSchema), async (c
   // Sign out of the Supabase session — we manage sessions ourselves with our JWT
   await anonDb.auth.signOut();
 
-  const res = await buildAuthResponse(data.user.id);
+  // Ensure profile row exists (trigger may have failed at signup time)
+  let res = await buildAuthResponse(data.user.id);
+  if (!res) {
+    await db.from('users').upsert({
+      id:    data.user.id,
+      name:  data.user.user_metadata?.name ?? data.user.email?.split('@')[0] ?? 'User',
+      email: data.user.email!,
+    }, { onConflict: 'id', ignoreDuplicates: true });
+    res = await buildAuthResponse(data.user.id);
+  }
   if (!res) return c.json({ error: 'User profile not found' }, 404);
 
   return c.json(res);
