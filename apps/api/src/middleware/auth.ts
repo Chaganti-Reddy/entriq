@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
-import { verify } from 'jsonwebtoken';
+import { jwtVerify, errors as joseErrors } from 'jose';
 import type { JWTPayload } from '@entriq/shared';
 import type { AppEnv } from '../types/index.js';
 
@@ -11,18 +11,16 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   const token = authHeader.slice(7);
-  const JWT_SECRET = process.env.JWT_SECRET;
-  if (!JWT_SECRET) return c.json({ error: 'Server misconfiguration' }, 500);
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return c.json({ error: 'Server misconfiguration' }, 500);
 
   try {
-    const payload = verify(token, JWT_SECRET) as JWTPayload;
-    c.set('user', payload);
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+    c.set('user', payload as unknown as JWTPayload);
     await next();
   } catch (err: unknown) {
-    if (err instanceof Error) {
-      if (err.name === 'TokenExpiredError') return c.json({ error: 'Token expired' }, 401);
-      if (err.name === 'JsonWebTokenError') return c.json({ error: 'Invalid token' }, 401);
-    }
+    if (err instanceof joseErrors.JWTExpired) return c.json({ error: 'Token expired' }, 401);
+    if (err instanceof joseErrors.JWTInvalid) return c.json({ error: 'Invalid token' }, 401);
     return c.json({ error: 'Authentication failed' }, 401);
   }
 };

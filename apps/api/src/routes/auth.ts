@@ -6,14 +6,14 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify, errors as joseErrors } from 'jose';
 import { db, anonDb } from '../services/db.js';
 import { authLimiter } from '../middleware/ratelimit.js';
 import type { AppEnv } from '../types/index.js';
 import type { JWTPayload, OrgStatus, AuthResponse } from '@entriq/shared';
 
-const JWT_SECRET         = () => process.env.JWT_SECRET!;
-const JWT_REFRESH_SECRET = () => process.env.JWT_REFRESH_SECRET!;
+const JWT_SECRET         = () => new TextEncoder().encode(process.env.JWT_SECRET!);
+const JWT_REFRESH_SECRET = () => new TextEncoder().encode(process.env.JWT_REFRESH_SECRET!);
 const APP_URL            = () => process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
 const ACCESS_TOKEN_TTL  = '15m';
@@ -70,9 +70,17 @@ function buildUserPayload(
   return payload;
 }
 
-function buildTokens(payload: JWTPayload, refreshSub: string, refreshType = 'refresh') {
-  const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ sub: refreshSub, type: refreshType }, JWT_REFRESH_SECRET(), { expiresIn: REFRESH_TOKEN_TTL });
+async function buildTokens(payload: JWTPayload, refreshSub: string, refreshType = 'refresh') {
+  const token = await new SignJWT(payload as Record<string, unknown>)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(ACCESS_TOKEN_TTL)
+    .sign(JWT_SECRET());
+  const refreshToken = await new SignJWT({ sub: refreshSub, type: refreshType })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(REFRESH_TOKEN_TTL)
+    .sign(JWT_REFRESH_SECRET());
   return { token, refreshToken };
 }
 
@@ -308,8 +316,16 @@ authRouter.post('/super-admin/login', authLimiter, zValidator('json', superAdmin
   if (!valid) return c.json({ error: 'Invalid email or password' }, 401);
 
   const payload: JWTPayload = { sub: sa.id, email: sa.email, name: sa.name, role: 'super_admin' };
-  const token        = jwt.sign(payload, JWT_SECRET(), { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ sub: sa.id, type: 'refresh_sa' }, JWT_REFRESH_SECRET(), { expiresIn: REFRESH_TOKEN_TTL });
+  const token = await new SignJWT(payload as Record<string, unknown>)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(ACCESS_TOKEN_TTL)
+    .sign(JWT_SECRET());
+  const refreshToken = await new SignJWT({ sub: sa.id, type: 'refresh_sa' })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(REFRESH_TOKEN_TTL)
+    .sign(JWT_REFRESH_SECRET());
 
   return c.json({ token, refreshToken, admin: { id: sa.id, name: sa.name, email: sa.email } });
 });
@@ -318,17 +334,23 @@ authRouter.post('/super-admin/login', authLimiter, zValidator('json', superAdmin
 authRouter.post('/refresh', zValidator('json', refreshSchema), async (c) => {
   const { refreshToken } = c.req.valid('json');
   try {
-    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET()) as { sub: string; type: string };
+    const { payload: decoded } = await jwtVerify(refreshToken, JWT_REFRESH_SECRET());
+    const sub  = decoded.sub as string;
+    const type = decoded['type'] as string;
 
-    if (decoded.type === 'refresh_sa') {
-      const { data: sa } = await db.from('super_admins').select('id, name, email').eq('id', decoded.sub).maybeSingle();
+    if (type === 'refresh_sa') {
+      const { data: sa } = await db.from('super_admins').select('id, name, email').eq('id', sub).maybeSingle();
       if (!sa) return c.json({ error: 'Account not found' }, 401);
       const payload: JWTPayload = { sub: sa.id, email: sa.email, name: sa.name, role: 'super_admin' };
-      const accessToken = jwt.sign(payload, JWT_SECRET(), { expiresIn: ACCESS_TOKEN_TTL });
+      const accessToken = await new SignJWT(payload as Record<string, unknown>)
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .setExpirationTime(ACCESS_TOKEN_TTL)
+        .sign(JWT_SECRET());
       return c.json({ token: accessToken });
     }
 
-    const res = await buildAuthResponse(decoded.sub);
+    const res = await buildAuthResponse(sub);
     if (!res) return c.json({ error: 'Account not found' }, 401);
 
     return c.json(res);
