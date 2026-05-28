@@ -6,4 +6,7 @@ allowBuilds:
   esbuild: true
   sharp: true
   unrs-resolver: true
-  workerd: true
+  workerd: set this to true or false
+
+neverBuiltDependencies:
+  - workerd
