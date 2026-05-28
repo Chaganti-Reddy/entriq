@@ -1,4 +1,4 @@
-name = "entriq-api"
+name = "entriq"
 main = "src/worker.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat_v2"]
@@ -9,7 +9,7 @@ compatibility_flags = ["nodejs_compat_v2"]
 
 [vars]
 NODE_ENV = "production"
-# FRONTEND_URL = "https://your-domain.vercel.app"   # uncomment after Vercel deploy
+FRONTEND_URL = "https://entriq.vercel.app"   # update to your actual Vercel URL
 
 # ─── Secrets (run these commands to set them) ─────────────────────────────────
 # wrangler secret put SUPABASE_URL

@@ -26,11 +26,23 @@ app.use('*', logger());
 
 app.use('*', cors({
   origin: (origin, c) => {
-    const allowed = (c.env as Record<string, string>)?.FRONTEND_URL
-      ?? process.env.FRONTEND_URL
-      ?? 'http://localhost:3000';
-    if (!origin) return allowed;
-    if (origin === allowed) return origin;
+    // No origin = server-to-server or same-origin — allow
+    if (!origin) return origin;
+
+    const frontendUrl = (c.env as Record<string, string>)?.FRONTEND_URL
+      ?? process.env.FRONTEND_URL ?? '';
+
+    const allowed = new Set([
+      'http://localhost:3000',
+      'http://localhost:3001',
+      ...(frontendUrl ? [frontendUrl] : []),
+    ]);
+
+    if (allowed.has(origin)) return origin;
+
+    // Allow any Vercel preview/production deployment for this project
+    if (/^https:\/\/entriq[a-z0-9-]*\.vercel\.app$/.test(origin)) return origin;
+
     return null;
   },
   allowHeaders: ['Content-Type', 'Authorization'],
