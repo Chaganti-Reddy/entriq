@@ -67,14 +67,28 @@ app.get('/health', (c: any) =>
 );
 
 // Temporary debug endpoint — remove after confirming env vars are injected
-app.get('/debug/env', (c: any) => c.json({
-  has_supabase_url:      !!getEnv('SUPABASE_URL'),
-  has_service_role_key:  !!getEnv('SUPABASE_SERVICE_ROLE_KEY'),
-  has_anon_key:          !!getEnv('SUPABASE_ANON_KEY'),
-  has_jwt_secret:        !!getEnv('JWT_SECRET'),
-  has_jwt_refresh:       !!getEnv('JWT_REFRESH_SECRET'),
-  node_env:              getEnv('NODE_ENV'),
-}));
+app.get('/debug/env', (c: any) => {
+  const e = c.env ?? {};
+  return c.json({
+    via_getEnv: {
+      has_supabase_url:     !!getEnv('SUPABASE_URL'),
+      has_service_role_key: !!getEnv('SUPABASE_SERVICE_ROLE_KEY'),
+      has_anon_key:         !!getEnv('SUPABASE_ANON_KEY'),
+      has_jwt_secret:       !!getEnv('JWT_SECRET'),
+      has_jwt_refresh:      !!getEnv('JWT_REFRESH_SECRET'),
+    },
+    via_c_env: {
+      has_supabase_url:     !!e.SUPABASE_URL,
+      has_service_role_key: !!e.SUPABASE_SERVICE_ROLE_KEY,
+      has_anon_key:         !!e.SUPABASE_ANON_KEY,
+      has_jwt_secret:       !!e.JWT_SECRET,
+      has_jwt_refresh:      !!e.JWT_REFRESH_SECRET,
+    },
+    node_env:        getEnv('NODE_ENV'),
+    frontend_url:    !!getEnv('FRONTEND_URL'),
+    enumerable_keys: Object.keys(e),
+  });
+});
 
 app.notFound((c: any) => c.json({ error: 'Route not found' }, 404));
 

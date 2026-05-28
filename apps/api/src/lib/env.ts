@@ -10,5 +10,9 @@ export function setCFEnv(env: Record<string, string>): void {
 }
 
 export function getEnv(key: string): string {
-  return _cfEnv[key] ?? (process.env[key] as string) ?? '';
+  // Try CF env binding first (handles both vars and secrets)
+  const cfVal = Reflect.get(_cfEnv, key);
+  if (cfVal) return cfVal as string;
+  // Fallback to process.env (local dev / Node.js)
+  return (process.env[key] as string) ?? '';
 }
