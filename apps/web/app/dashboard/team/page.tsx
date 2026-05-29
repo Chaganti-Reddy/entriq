@@ -110,8 +110,8 @@ export default function TeamPage() {
   return (
     <div>
       <PageHeader
-        title="Team"
-        subtitle="Manage co-organizers who can scan QR codes and view registrations."
+        title="Organisation Team"
+        subtitle="Manage org-wide admins and co-organizers. For per-event teams, open an event and click Team."
         actions={
           <Button size="sm" onClick={() => setInviteOpen(true)}>
             <UserPlus className="w-4 h-4" /> Invite co-organizer

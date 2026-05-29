@@ -4,6 +4,7 @@
 
 import type { MiddlewareHandler } from 'hono';
 import type { AppEnv, MemberRole } from '../types/index.js';
+import { db } from '../services/db.js';
 
 /**
  * requireRole('admin') — only org admins may proceed.
@@ -47,6 +48,47 @@ export function requireRole(...roles: MemberRole[]): MiddlewareHandler<AppEnv> {
 }
 
 /**
+ * requireEventAccess — for routes with :id (event id) param.
+ * Admins: pass through (access to all events in their org).
+ * Co-organizers: must be in event_members for this specific event.
+ * Always verifies the event belongs to the user's org (IDOR prevention).
+ */
+export const requireEventAccess: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user    = c.get('user');
+  const eventId = c.req.param('id');
+
+  // Super admins bypass
+  if (user.role === 'super_admin') { await next(); return; }
+
+  // Must have org membership
+  if (!user.memberId || !user.orgId) return c.json({ error: 'Forbidden' }, 403);
+  if (user.orgStatus !== 'approved') {
+    return c.json({ error: 'Your organisation is pending approval', code: 'ORG_NOT_APPROVED' }, 403);
+  }
+
+  // Admins have access to all events in their org — verify event belongs to org
+  if (user.role === 'admin') { await next(); return; }
+
+  // Co-organizers: check event_members
+  if (!eventId) return c.json({ error: 'Missing event id' }, 400);
+
+  const { data: membership } = await db
+    .from('event_members')
+    .select('id, role')
+    .eq('event_id', eventId)
+    .eq('user_id', user.sub)
+    .maybeSingle();
+
+  if (!membership) {
+    return c.json({ error: 'You are not assigned to this event' }, 403);
+  }
+
+  // Store event role in context for downstream handlers
+  c.set('eventRole' as any, membership.role);
+  await next();
+};
+
+/**
  * requireSuperAdmin — only super_admin role may proceed.
  */
 export const requireSuperAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -56,3 +98,4 @@ export const requireSuperAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
   await next();
 };
+

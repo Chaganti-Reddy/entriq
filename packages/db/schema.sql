@@ -90,6 +90,22 @@ CREATE TABLE checkins (
   approved_by     TEXT        DEFAULT 'Admin'
 );
 
+-- ─── EVENT MEMBERS ────────────────────────────────────────────────────────────
+-- Per-event team assignments. A user can be co-organizer for event A
+-- and a regular participant for event B in the same org.
+-- org_members (admin/co_organizer) controls dashboard access;
+-- event_members controls which specific events a co-organizer can manage.
+CREATE TABLE event_members (
+  id         UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_id   UUID        NOT NULL REFERENCES events(id)      ON DELETE CASCADE,
+  user_id    UUID        NOT NULL REFERENCES users(id)       ON DELETE CASCADE,
+  org_id     UUID        NOT NULL REFERENCES orgs(id)        ON DELETE CASCADE,
+  role       TEXT        NOT NULL CHECK (role IN ('co_organizer', 'scanner')),
+  invited_by UUID        REFERENCES org_members(id)          ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (event_id, user_id)
+);
+
 -- ─── INDEXES ──────────────────────────────────────────────────────────────────
 CREATE INDEX idx_users_email               ON users(email);
 CREATE INDEX idx_org_members_user_id       ON org_members(user_id);
@@ -97,6 +113,9 @@ CREATE INDEX idx_org_members_org_id        ON org_members(org_id);
 CREATE INDEX idx_orgs_status               ON orgs(status);
 CREATE INDEX idx_events_slug               ON events(slug);
 CREATE INDEX idx_events_org_id             ON events(org_id);
+CREATE INDEX idx_event_members_event_id    ON event_members(event_id);
+CREATE INDEX idx_event_members_user_id     ON event_members(user_id);
+CREATE INDEX idx_event_members_org_id      ON event_members(org_id);
 CREATE INDEX idx_registrations_event_id    ON registrations(event_id);
 CREATE INDEX idx_registrations_user_id     ON registrations(user_id);
 CREATE INDEX idx_registrations_unique_code ON registrations(unique_code);
@@ -108,6 +127,7 @@ CREATE INDEX idx_checkins_registration_id  ON checkins(registration_id);
 ALTER TABLE users          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orgs           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE org_members    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_members  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE super_admins   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE registrations  ENABLE ROW LEVEL SECURITY;

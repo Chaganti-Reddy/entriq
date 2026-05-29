@@ -88,6 +88,7 @@ registrationsRouter.post('/:eventSlug', registrationLimiter, authMiddleware, zVa
 });
 
 // GET /registrations/event/:eventId — org members only, returns all registrations for event
+// Co-organizers: scoped to events they are assigned to via event_members.
 registrationsRouter.get('/event/:eventId', authMiddleware, requireRole('co_organizer', 'admin'), async (c) => {
   const user = c.get('user');
   const { eventId } = c.req.param();
@@ -99,6 +100,17 @@ registrationsRouter.get('/event/:eventId', authMiddleware, requireRole('co_organ
     .eq('org_id', user.orgId!)
     .maybeSingle();
   if (!event) return c.json({ error: 'Event not found' }, 404);
+
+  // Co-organizers must be assigned to this specific event
+  if (user.role === 'co_organizer') {
+    const { data: assignment } = await db
+      .from('event_members')
+      .select('id')
+      .eq('event_id', eventId)
+      .eq('user_id', user.sub)
+      .maybeSingle();
+    if (!assignment) return c.json({ error: 'You are not assigned to this event' }, 403);
+  }
 
   const { data: registrations, error } = await db
     .from('registrations')

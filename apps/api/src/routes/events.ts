@@ -7,7 +7,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { db } from '../services/db.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { requireRole } from '../middleware/roles.js';
+import { requireRole, requireEventAccess } from '../middleware/roles.js';
 import type { AppEnv } from '../types/index.js';
 
 // ─── Validation schemas ────────────────────────────────────────────────────────
@@ -68,15 +68,35 @@ eventsRouter.use('*', authMiddleware);
 // GET routes: both admin + co_organizer can read
 // Write routes (POST/PUT/DELETE): per-route override to admin-only (see below)
 
-// GET /events — list all events for the logged-in org
+// GET /events — list events for the logged-in org
+// Admins: all events. Co-organizers: only events they are assigned to via event_members.
 eventsRouter.get('/', requireRole('co_organizer', 'admin'), async (c) => {
   const user = c.get('user');
 
-  const { data: events, error } = await db
+  let eventIds: string[] | null = null;
+
+  // Co-organizers are scoped to their assigned events
+  if (user.role === 'co_organizer') {
+    const { data: assignments } = await db
+      .from('event_members')
+      .select('event_id')
+      .eq('user_id', user.sub)
+      .eq('org_id', user.orgId!);
+
+    eventIds = (assignments ?? []).map((a) => a.event_id);
+    // If not assigned to any event, return empty
+    if (eventIds.length === 0) return c.json([]);
+  }
+
+  let query = db
     .from('events')
     .select('*')
     .eq('org_id', user.orgId!)
     .order('created_at', { ascending: false });
+
+  if (eventIds !== null) query = query.in('id', eventIds);
+
+  const { data: events, error } = await query;
 
   if (error) {
     console.error('[events/list]', error);
@@ -146,8 +166,9 @@ eventsRouter.post('/', requireRole('admin'), zValidator('json', createEventSchem
   return c.json(event, 201);
 });
 
-// GET /events/:id — get single event with counts (co-organizer + admin)
-eventsRouter.get('/:id', requireRole('co_organizer', 'admin'), async (c) => {
+// GET /events/:id — get single event with counts
+// Co-organizers: must be assigned in event_members.
+eventsRouter.get('/:id', requireRole('co_organizer', 'admin'), requireEventAccess, async (c) => {
   const user = c.get('user');
   const { id } = c.req.param();
 

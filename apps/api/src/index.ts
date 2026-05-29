@@ -17,6 +17,7 @@ import { registrationsRouter } from './routes/registrations.js';
 import { checkinRouter } from './routes/checkins.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { membersRouter } from './routes/members.js';
+import { eventMembersRouter } from './routes/event-members.js';
 import { superAdminRouter } from './routes/super-admin.js';
 
 import { userRouter } from './routes/user.js';
@@ -63,6 +64,7 @@ app.route('/registrations', registrationsRouter);
 app.route('/checkin', checkinRouter);
 app.route('/analytics', analyticsRouter);
 app.route('/members', membersRouter);
+app.route('/events/:id/members', eventMembersRouter);
 app.route('/super-admin', superAdminRouter);
 app.route('/user', userRouter);
 
