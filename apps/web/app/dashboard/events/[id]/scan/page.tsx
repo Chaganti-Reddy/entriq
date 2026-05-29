@@ -46,7 +46,6 @@ interface EventInfo {
   location: string | null;
 }
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 const SCAN_COOLDOWN_MS = 2000; // ignore repeat scans of same code for 2s
 const AUTO_RESET_MS   = 3000; // auto-return to camera after result
 
@@ -220,16 +219,16 @@ export default function ScannerPage() {
       lastCode.current   = code.data;
       lastCodeAt.current = now;
 
-      // Extract unique_code from URL or use raw value
-      let uniqueCode = code.data;
+      // Extract unique_code: if QR contains any URL, take the last path segment.
+      // Don't match by domain — APP_URL env var may differ between environments.
+      let uniqueCode = code.data.trim();
       try {
-        const url = new URL(code.data);
-        if (url.origin === APP_URL || url.hostname.includes('localhost')) {
-          const parts = url.pathname.split('/');
-          uniqueCode = parts[parts.length - 1];
-        }
+        const url = new URL(uniqueCode);
+        const parts = url.pathname.replace(/\/$/, '').split('/');
+        const last = parts[parts.length - 1];
+        if (last) uniqueCode = last;
       } catch {
-        // Not a URL — use as-is
+        // Not a URL — use raw value as-is (plain unique_code string)
       }
 
       handleCodeDetected(uniqueCode);
