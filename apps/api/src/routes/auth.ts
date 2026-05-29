@@ -276,6 +276,12 @@ authRouter.post('/signup/org', authLimiter, zValidator('json', orgSignupSchema),
 authRouter.post('/login', authLimiter, zValidator('json', loginSchema), async (c) => {
   const { email, password } = c.req.valid('json');
 
+  // Block super admins from logging in via the regular login endpoint
+  const { data: isSA } = await db.from('super_admins').select('id').eq('email', email).maybeSingle();
+  if (isSA) {
+    return c.json({ error: 'Please use the super admin login page.' }, 403);
+  }
+
   const { data, error } = await anonDb.auth.signInWithPassword({ email, password });
 
   if (error) {
