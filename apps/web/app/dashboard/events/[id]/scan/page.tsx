@@ -522,56 +522,57 @@ export default function ScannerPage() {
           <motion.div key="pending"
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed inset-0 bg-zinc-950 flex flex-col justify-between p-6 overflow-y-auto"
+            className="fixed inset-0 bg-zinc-950 overflow-y-auto"
           >
-            <div>
-              <button onClick={manualReset} className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 text-sm mb-6">
+            <div className="min-h-full flex flex-col p-6">
+              <button onClick={manualReset} className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 text-sm mb-6 self-start">
                 <ArrowLeft className="w-4 h-4" /> Back to scanner
               </button>
 
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full
-                bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm font-medium mb-4">
+                bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm font-medium mb-5">
                 <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
                 PENDING ENTRY
               </div>
 
-              <h1 className="text-4xl font-bold text-zinc-100 leading-tight mb-3">
+              <h2 className="text-2xl font-bold text-zinc-100 mb-4">
                 {state.registration.name} {state.registration.surname}
-              </h1>
+              </h2>
 
-              <div className="space-y-1.5 text-zinc-400 text-base">
+              <div className="space-y-2 text-zinc-300 text-base mb-4">
                 <p>📍 {state.registration.city}, {state.registration.state}</p>
                 <p>📞 {state.registration.mobile}</p>
                 <p>💼 {state.registration.profession}</p>
               </div>
 
-              <div className="mt-6 pt-4 border-t border-zinc-800">
+              <div className="pt-4 border-t border-zinc-800 mb-3">
                 <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Event</p>
                 <p className="text-zinc-300 font-medium">{state.event.name}</p>
               </div>
 
-              <div className="mt-4">
+              <div className="mb-4">
                 <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Entry ID</p>
                 <code className="text-sm text-zinc-400 font-mono">{state.registration.unique_code}</code>
               </div>
-            </div>
 
-            <div className="mt-8 space-y-3">
-              <button
-                onClick={() => handleApprove(state.uniqueCode)}
-                className="w-full h-16 rounded-2xl bg-green-600 hover:bg-green-500 active:scale-[0.98]
-                  text-white text-xl font-semibold flex items-center justify-center gap-3
-                  transition-all shadow-lg shadow-green-900/30"
-              >
-                <Check className="w-6 h-6" strokeWidth={3} />
-                APPROVE ENTRY
-              </button>
-              <button
-                onClick={manualReset}
-                className="w-full h-12 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:border-zinc-600"
-              >
-                Cancel — scan different code
-              </button>
+              {/* Buttons pushed to bottom — mt-auto ensures they're always reachable */}
+              <div className="mt-auto pt-6 space-y-3">
+                <button
+                  onClick={() => handleApprove(state.uniqueCode)}
+                  className="w-full h-16 rounded-2xl bg-green-600 hover:bg-green-500 active:scale-[0.98]
+                    text-white text-xl font-semibold flex items-center justify-center gap-3
+                    transition-all shadow-lg shadow-green-900/30"
+                >
+                  <Check className="w-6 h-6" strokeWidth={3} />
+                  APPROVE ENTRY
+                </button>
+                <button
+                  onClick={manualReset}
+                  className="w-full h-12 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:border-zinc-600"
+                >
+                  Cancel — scan different code
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

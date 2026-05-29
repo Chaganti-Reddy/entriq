@@ -256,14 +256,10 @@ export default function EventDetailPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-medium text-zinc-100 text-sm">
-                        {reg.name} {reg.surname}
-                      </span>
+                      <span className="font-medium text-zinc-100 text-sm">{reg.email}</span>
                       <StatusBadge status={reg.status} />
                     </div>
                     <div className="flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
-                      <span>{reg.email}</span>
-                      <span>·</span>
                       <span>{reg.city}, {reg.state}</span>
                       <span>·</span>
                       <span>{reg.profession}</span>
