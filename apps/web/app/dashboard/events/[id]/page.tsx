@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, Users, CheckCircle2, Clock, BarChart3,
-  Link2, ExternalLink, Search, Download, RefreshCw
+  Link2, ExternalLink, Search, Download, RefreshCw, ScanLine
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -128,6 +128,11 @@ export default function EventDetailPage() {
                 <Link href={`/dashboard/events/${id}/edit`}>Edit event</Link>
               </Button>
             )}
+            <Button size="sm" asChild className="bg-violet-600 hover:bg-violet-500 text-white">
+              <Link href={`/dashboard/events/${id}/scan`}>
+                <ScanLine className="w-4 h-4" /> Start Scanner
+              </Link>
+            </Button>
           </div>
         }
       />
