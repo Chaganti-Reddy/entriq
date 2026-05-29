@@ -200,6 +200,37 @@ userRouter.patch(
   }
 );
 
+// GET /user/event-assignments — all event_members rows for this user, across ALL orgs.
+// Used to show "External Assignments" for org members and assignments on pending-approval page.
+userRouter.get('/event-assignments', authMiddleware, async (c) => {
+  const user = c.get('user');
+
+  const { data, error } = await db
+    .from('event_members')
+    .select(`
+      id, role, created_at,
+      events:event_id ( id, name, slug, date, location, is_active ),
+      orgs:org_id ( id, name )
+    `)
+    .eq('user_id', user.sub)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[user/event-assignments]', error);
+    return c.json({ error: 'Failed to fetch event assignments' }, 500);
+  }
+
+  return c.json(
+    (data ?? []).map((a) => ({
+      id:         a.id,
+      role:       a.role,
+      created_at: a.created_at,
+      event:      a.events,
+      org:        a.orgs,
+    }))
+  );
+});
+
 // POST /user/create-org — existing participant creates a new organisation (pending approval)
 userRouter.post(
   '/create-org',

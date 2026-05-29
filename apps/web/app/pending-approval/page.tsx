@@ -1,22 +1,42 @@
 // apps/web/app/pending-approval/page.tsx
 // Shown after signup (org status = 'pending') or after login if still not approved.
+// Also shows any active event assignments so scanner/co-organizer roles remain accessible.
 
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Clock, CheckCircle, XCircle, AlertCircle, LogOut, RefreshCw, QrCode } from 'lucide-react';
+import {
+  Clock, XCircle, AlertCircle, LogOut, RefreshCw, QrCode,
+  ScanLine, ShieldCheck, ArrowRight, CalendarDays,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { formatDateShort } from '@/lib/utils';
 import type { AuthResponse } from '@entriq/shared';
+
+interface EventAssignment {
+  id: string;
+  role: 'co_organizer' | 'scanner';
+  event: { id: string; name: string; date: string | null; location: string | null; is_active: boolean };
+  org: { id: string; name: string };
+}
 
 export default function PendingApprovalPage() {
   const router   = useRouter();
   const { user, clearAuth, setAuth, _hasHydrated } = useAuthStore();
   const [checking, setChecking] = useState(false);
+
+  // ── Fetch event assignments so the user can still access scanner/co-org events ──
+  const { data: assignments } = useQuery<EventAssignment[]>({
+    queryKey: ['event-assignments-pending'],
+    queryFn:  async () => { const { data } = await api.get('/user/event-assignments'); return data; },
+    enabled:  !!user,
+  });
 
   // Auto-refresh token on mount so re-approved orgs are detected immediately on page load/refresh
   useEffect(() => {
@@ -91,7 +111,8 @@ export default function PendingApprovalPage() {
   if (!cfg) return null;
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-start p-4 pt-12">
+      {/* ── Status card ── */}
       <div className={`max-w-md w-full border rounded-2xl p-8 shadow-2xl shadow-black/50 ${cfg.color}`}>
         <div className="flex flex-col items-center text-center gap-4">
           {cfg.icon}
@@ -149,6 +170,58 @@ export default function PendingApprovalPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Event assignments — so scanner/co-organizer access is never blocked ── */}
+      {assignments && assignments.length > 0 && (
+        <div className="max-w-md w-full mt-6">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarDays className="w-4 h-4 text-violet-400" />
+            <h2 className="text-sm font-semibold text-zinc-300">Your Event Assignments</h2>
+          </div>
+          <p className="text-xs text-zinc-500 mb-4 leading-relaxed">
+            You can still access these events while your organisation approval is pending.
+          </p>
+          <div className="space-y-3">
+            {assignments.map((a) => (
+              <div
+                key={a.id}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="text-sm font-medium text-zinc-200">{a.event?.name}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+                      a.role === 'co_organizer'
+                        ? 'bg-blue-500/15 text-blue-400 border-blue-500/20'
+                        : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
+                    }`}>
+                      {a.role === 'co_organizer'
+                        ? <><ShieldCheck className="w-3 h-3 inline mr-1" />Co-organizer</>
+                        : <><ScanLine className="w-3 h-3 inline mr-1" />Scanner</>}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    {a.org?.name}
+                    {a.event?.date && ` · 📅 ${formatDateShort(a.event.date)}`}
+                    {a.event?.location && ` · 📍 ${a.event.location}`}
+                  </p>
+                </div>
+                <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-zinc-200 shrink-0" asChild>
+                  {a.role === 'scanner' ? (
+                    <Link href={`/dashboard/events/${a.event?.id}/scan`}>
+                      <ScanLine className="w-4 h-4" />
+                    </Link>
+                  ) : (
+                    <Link href={`/dashboard/events/${a.event?.id}`}>
+                      <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

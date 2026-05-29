@@ -100,23 +100,60 @@ export default function ScannerPage() {
 
   const startCamera = useCallback(async () => {
     stopCamera();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment', // rear camera
-          width:  { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+
+    // Try progressively simpler constraints — mobile browsers can be strict.
+    // 1st: rear camera + ideal resolution
+    // 2nd: rear camera only (no resolution)
+    // 3rd: any camera (front is fine too — some tablets only have front)
+    const constraints: MediaStreamConstraints[] = [
+      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      { video: { facingMode: { ideal: 'environment' } } },
+      { video: true },
+    ];
+
+    let stream: MediaStream | null = null;
+    let lastErr: unknown;
+    for (const c of constraints) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(c);
+        break; // got a stream — stop trying
+      } catch (err) {
+        lastErr = err;
+        // NotAllowedError = user denied permission — no point retrying
+        if ((err as { name?: string }).name === 'NotAllowedError') break;
       }
-      setState({ type: 'scanning' });
-    } catch {
-      setState({ type: 'error', message: 'Camera access denied. Please allow camera permission.' });
     }
+
+    if (!stream) {
+      const name = (lastErr as { name?: string })?.name ?? 'UnknownError';
+      if (name === 'NotAllowedError') {
+        setState({ type: 'error', message: 'Camera permission denied. Please allow camera access in your browser settings and try again.' });
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setState({ type: 'error', message: 'No camera found on this device.' });
+      } else {
+        setState({ type: 'error', message: `Could not start camera (${name}). Try reloading the page.` });
+      }
+      return;
+    }
+
+    streamRef.current = stream;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      // Wait for video metadata before calling play() — critical on iOS Safari
+      await new Promise<void>((resolve) => {
+        const v = videoRef.current!;
+        if (v.readyState >= 2) { resolve(); return; }
+        v.addEventListener('loadedmetadata', () => resolve(), { once: true });
+      });
+      try {
+        await videoRef.current.play();
+      } catch {
+        // play() can throw on visibility-hidden contexts; usually recovers on its own
+      }
+    }
+
+    setState({ type: 'scanning' });
   }, [stopCamera]);
 
   useEffect(() => {
@@ -286,6 +323,7 @@ export default function ScannerPage() {
           state.type === 'scanning' ? 'opacity-100' : 'opacity-0',
         )}
         playsInline
+        autoPlay
         muted
         aria-hidden="true"
       />
@@ -572,7 +610,7 @@ export default function ScannerPage() {
             <p className="text-zinc-300 font-medium">{state.message}</p>
             <div className="flex gap-3 mt-2">
               <button
-                onClick={() => setState({ type: 'scanning' })}
+                onClick={() => startCamera()}
                 className="px-5 py-2.5 rounded-xl bg-zinc-800 text-zinc-200 text-sm"
               >
                 Try again
