@@ -62,7 +62,11 @@ function LoginForm() {
       if (status === 401) {
         setGlobalError('Invalid email or password. Please try again.');
       } else if (status === 403) {
-        setGlobalError(msg);
+        if (msg.includes('super admin')) {
+          setGlobalError('This account is a super admin. Please sign in at /super-admin/login.');
+        } else {
+          setGlobalError(msg);
+        }
       } else {
         toast.error(msg);
       }
