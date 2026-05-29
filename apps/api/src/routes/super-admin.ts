@@ -169,6 +169,42 @@ superAdminRouter.patch(
   }
 );
 
+// DELETE /super-admin/orgs/:id — permanently delete an org and all its data
+superAdminRouter.delete('/orgs/:id', async (c) => {
+  const { id } = c.req.param();
+
+  const { data: org } = await db.from('orgs').select('id').eq('id', id).maybeSingle();
+  if (!org) return c.json({ error: 'Organisation not found' }, 404);
+
+  // Cascade: delete checkins → registrations → events → org_members → org
+  // (FK constraints may handle some of this, but explicit order is safer)
+  const { data: orgEvents } = await db.from('events').select('id').eq('org_id', id);
+  const eventIds = (orgEvents ?? []).map((e) => e.id);
+
+  if (eventIds.length > 0) {
+    // Delete checkins for all events in this org
+    await db.from('checkins').delete().in('event_id', eventIds);
+    // Delete registrations
+    await db.from('registrations').delete().in('event_id', eventIds);
+    // Delete event_members
+    await db.from('event_members').delete().in('event_id', eventIds);
+    // Delete events
+    await db.from('events').delete().in('id', eventIds);
+  }
+
+  // Delete org members
+  await db.from('org_members').delete().eq('org_id', id);
+
+  // Delete org
+  const { error } = await db.from('orgs').delete().eq('id', id);
+  if (error) {
+    console.error('[super-admin/orgs/delete]', error);
+    return c.json({ error: 'Failed to delete organisation' }, 500);
+  }
+
+  return c.json({ ok: true });
+});
+
 // PATCH /super-admin/password — change super admin password via Supabase Auth
 superAdminRouter.patch(
   '/password',

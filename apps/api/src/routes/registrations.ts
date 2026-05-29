@@ -241,3 +241,107 @@ registrationsRouter.get('/event/:eventId', authMiddleware, requireRole('co_organ
   return c.json(registrations ?? []);
 });
 
+// POST /registrations/bulk-delete — delete multiple registrations at once (admin/co-organizer)
+registrationsRouter.post(
+  '/bulk-delete',
+  authMiddleware,
+  requireRole('co_organizer', 'admin'),
+  zValidator('json', z.object({ ids: z.array(z.string().uuid()).min(1).max(200) })),
+  async (c) => {
+    const user = c.get('user');
+    const { ids } = c.req.valid('json');
+
+    const { data: regs, error: fetchError } = await db
+      .from('registrations')
+      .select('id, event_id')
+      .in('id', ids);
+
+    if (fetchError || !regs?.length) return c.json({ error: 'No valid registrations found' }, 404);
+
+    const eventIds = [...new Set(regs.map((r) => r.event_id))];
+    const { data: events } = await db
+      .from('events')
+      .select('id')
+      .in('id', eventIds)
+      .eq('org_id', user.orgId!);
+
+    const allowedEventIds = new Set((events ?? []).map((e) => e.id));
+
+    let assignedEventIds: Set<string> | null = null;
+    if (user.role === 'co_organizer' && user.isEventMember) {
+      const { data: assignments } = await db
+        .from('event_members')
+        .select('event_id')
+        .in('event_id', [...allowedEventIds])
+        .eq('user_id', user.sub);
+      assignedEventIds = new Set((assignments ?? []).map((a) => a.event_id));
+    }
+
+    const authorizedIds = regs
+      .filter((r) => {
+        if (!allowedEventIds.has(r.event_id)) return false;
+        if (assignedEventIds && !assignedEventIds.has(r.event_id)) return false;
+        return true;
+      })
+      .map((r) => r.id);
+
+    if (!authorizedIds.length) return c.json({ error: 'Forbidden' }, 403);
+
+    // Delete checkins first to avoid FK violations
+    await db.from('checkins').delete().in('registration_id', authorizedIds);
+
+    const { error: deleteError } = await db.from('registrations').delete().in('id', authorizedIds);
+
+    if (deleteError) {
+      console.error('[registrations/bulk-delete]', deleteError);
+      return c.json({ error: 'Failed to delete registrations' }, 500);
+    }
+
+    return c.json({ ok: true, deleted: authorizedIds.length });
+  }
+);
+
+// DELETE /registrations/:id — admin/co-organizer can remove a registration
+registrationsRouter.delete('/:id', authMiddleware, requireRole('co_organizer', 'admin'), async (c) => {
+  const user = c.get('user');
+  const { id } = c.req.param();
+
+  const { data: reg } = await db
+    .from('registrations')
+    .select('id, event_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!reg) return c.json({ error: 'Registration not found' }, 404);
+
+  // Verify event belongs to caller's org
+  const { data: event } = await db
+    .from('events')
+    .select('id')
+    .eq('id', reg.event_id)
+    .eq('org_id', user.orgId!)
+    .maybeSingle();
+
+  if (!event) return c.json({ error: 'Forbidden' }, 403);
+
+  // Co-organizer event-only: must be assigned to this event
+  if (user.role === 'co_organizer' && user.isEventMember) {
+    const { data: assignment } = await db
+      .from('event_members')
+      .select('id')
+      .eq('event_id', reg.event_id)
+      .eq('user_id', user.sub)
+      .maybeSingle();
+    if (!assignment) return c.json({ error: 'You are not assigned to this event' }, 403);
+  }
+
+  const { error } = await db.from('registrations').delete().eq('id', id);
+
+  if (error) {
+    console.error('[registrations/delete]', error);
+    return c.json({ error: 'Failed to delete registration' }, 500);
+  }
+
+  return c.json({ ok: true });
+});
+

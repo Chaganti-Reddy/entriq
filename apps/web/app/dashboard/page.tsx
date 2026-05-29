@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays, Users, CheckCircle2, Plus, ArrowRight,
-  Building2, ScanLine, ShieldCheck, Loader2, X,
+  Building2, ScanLine, ShieldCheck, Loader2, X, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { StatusBadge } from '@/components/dashboard/status-badge';
 import { EmptyState } from '@/components/dashboard/empty-state';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { Spinner } from '@/components/ui/spinner';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/lib/api';
 import { formatDateShort } from '@/lib/utils';
@@ -40,6 +41,7 @@ export default function DashboardPage() {
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
   const [orgName, setOrgName]             = useState('');
   const [contactEmail, setContactEmail]   = useState('');
+  const [deleteEventTarget, setDeleteEventTarget] = useState<EventWithCounts | null>(null);
 
   // ── Events for current org context ──
   const { data: events, isLoading } = useQuery<EventWithCounts[]>({
@@ -76,6 +78,17 @@ export default function DashboardPage() {
       const msg = (err as any)?.response?.data?.error ?? 'Failed to create organisation';
       toast.error(msg);
     },
+  });
+
+  // ── Delete event mutation (admin only) ──
+  const deleteEventMutation = useMutation({
+    mutationFn: (eventId: string) => api.delete(`/events/${eventId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['events'] });
+      toast.success('Event deleted.');
+      setDeleteEventTarget(null);
+    },
+    onError: () => toast.error('Failed to delete event.'),
   });
 
   function handleCreateOrg() {
@@ -211,30 +224,44 @@ export default function DashboardPage() {
         ) : (
           <div className="space-y-3">
             {events.map((event) => (
-              <Link
+              <div
                 key={event.id}
-                href={`/dashboard/events/${event.id}`}
-                className="block bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-2xl p-5 transition-colors group"
+                className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-2xl p-5 transition-colors group relative"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-semibold text-zinc-100">{event.name}</span>
-                      <StatusBadge status={event.is_active ? 'active' : 'inactive'} />
+                <Link
+                  href={`/dashboard/events/${event.id}`}
+                  className="block pr-10"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="font-semibold text-zinc-100">{event.name}</span>
+                        <StatusBadge status={event.is_active ? 'active' : 'inactive'} />
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-zinc-400">
+                        {event.date     && <span>📅 {formatDateShort(event.date)}</span>}
+                        {event.location && <span>📍 {event.location}</span>}
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-zinc-500 mt-2">
+                        <span>{event.registration_count} registered</span>
+                        <span>·</span>
+                        <span>{event.checkin_count} checked in</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-zinc-400">
-                      {event.date     && <span>📅 {formatDateShort(event.date)}</span>}
-                      {event.location && <span>📍 {event.location}</span>}
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-zinc-500 mt-2">
-                      <span>{event.registration_count} registered</span>
-                      <span>·</span>
-                      <span>{event.checkin_count} checked in</span>
-                    </div>
+                    <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors shrink-0 mt-1" />
                   </div>
-                  <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors shrink-0 mt-1" />
-                </div>
-              </Link>
+                </Link>
+                {/* Delete button — admin only, positioned top-right */}
+                {isAdmin && (
+                  <button
+                    onClick={(e) => { e.preventDefault(); setDeleteEventTarget(event); }}
+                    className="absolute top-4 right-4 w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Delete event"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -289,6 +316,19 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Delete event confirm dialog */}
+      <ConfirmDialog
+        open={!!deleteEventTarget}
+        title="Delete Event"
+        description={deleteEventTarget
+          ? `Permanently delete "${deleteEventTarget.name}" and all its registrations? This cannot be undone.`
+          : ''}
+        confirmLabel="Delete Event"
+        loading={deleteEventMutation.isPending}
+        onConfirm={() => deleteEventTarget && deleteEventMutation.mutate(deleteEventTarget.id)}
+        onCancel={() => setDeleteEventTarget(null)}
+      />
     </div>
   );
 }

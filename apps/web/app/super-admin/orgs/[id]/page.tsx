@@ -9,10 +9,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Building2, Users, CalendarDays, CheckCircle2, XCircle,
   AlertCircle, Loader2, Mail, Phone, MapPin, Briefcase, ChevronDown,
-  ChevronRight, QrCode, UserCheck, Clock, Info,
+  ChevronRight, QrCode, UserCheck, Clock, Info, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { saApi } from '@/lib/saApi';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/lib/utils';
@@ -130,6 +131,7 @@ export default function OrgDetailPage() {
   const [tab, setTab]                         = useState<Tab>('overview');
   const [rejectReason, setRejectReason]       = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [deleteConfirm, setDeleteConfirm]     = useState(false);
 
   const { data, isLoading } = useQuery<OrgDetail>({
     queryKey: ['sa-org', id],
@@ -147,6 +149,17 @@ export default function OrgDetailPage() {
       setShowRejectInput(false);
     },
     onError: () => toast.error('Failed to update status'),
+  });
+
+  const deleteOrgMutation = useMutation({
+    mutationFn: () => saApi.delete(`/super-admin/orgs/${id}`),
+    onSuccess: () => {
+      toast.success('Organisation deleted.');
+      qc.invalidateQueries({ queryKey: ['sa-orgs'] });
+      qc.invalidateQueries({ queryKey: ['sa-stats'] });
+      router.replace('/super-admin/orgs');
+    },
+    onError: () => toast.error('Failed to delete organisation.'),
   });
 
   if (isLoading) return <div className="flex justify-center py-16"><Spinner /></div>;
@@ -204,6 +217,14 @@ export default function OrgDetailPage() {
               <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={statusMutation.isPending}
                 onClick={() => statusMutation.mutate({ status: 'approved' })}><CheckCircle2 className="w-4 h-4" /> Re-approve</Button>
             )}
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-500 text-white ml-auto"
+              onClick={() => setDeleteConfirm(true)}
+              disabled={deleteOrgMutation.isPending}
+            >
+              <Trash2 className="w-4 h-4" /> Delete Org
+            </Button>
           </div>
         </div>
         {showRejectInput && (
@@ -345,6 +366,16 @@ export default function OrgDetailPage() {
             )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteConfirm}
+        title="Delete Organisation"
+        description={`Permanently delete "${org.name}" including all its events, registrations, and members? This cannot be undone.`}
+        confirmLabel="Delete Organisation"
+        loading={deleteOrgMutation.isPending}
+        onConfirm={() => deleteOrgMutation.mutate()}
+        onCancel={() => setDeleteConfirm(false)}
+      />
     </div>
   );
 }

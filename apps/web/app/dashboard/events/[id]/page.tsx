@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Users, CheckCircle2, Clock, BarChart3,
   Link2, ExternalLink, Search, Download, RefreshCw, ScanLine, Users2,
-  UserCheck, CheckCheck, Square, CheckSquare,
+  UserCheck, CheckCheck, Square, CheckSquare, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import { StatusBadge } from '@/components/dashboard/status-badge';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Spinner } from '@/components/ui/spinner';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { formatDateShort, formatDateTime, timeAgo } from '@/lib/utils';
@@ -33,6 +34,8 @@ export default function EventDetailPage() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [statusFilter, setStatusFilter] = useState<'all' | 'not_approved' | 'admin_approved' | 'approved'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget]         = useState<Registration | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const isAdmin       = user?.role === 'admin';
@@ -78,6 +81,29 @@ export default function EventDetailPage() {
     approveMutation.mutate(ids);
   }, [approveMutation]);
 
+  const deleteMutation = useMutation({
+    mutationFn: (regId: string) => api.delete(`/registrations/${regId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['registrations', id] });
+      queryClient.invalidateQueries({ queryKey: ['event', id] });
+      toast.success('Registration deleted.');
+      setDeleteTarget(null);
+    },
+    onError: () => toast.error('Failed to delete. Please try again.'),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.post('/registrations/bulk-delete', { ids }),
+    onSuccess: (_data, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['registrations', id] });
+      queryClient.invalidateQueries({ queryKey: ['event', id] });
+      toast.success(`${ids.length} registration${ids.length !== 1 ? 's' : ''} deleted.`);
+      setSelectedIds(new Set());
+      setBulkDeleteConfirm(false);
+    },
+    onError: () => toast.error('Failed to delete. Please try again.'),
+  });
+
   const toggleSelect = useCallback((regId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -87,21 +113,6 @@ export default function EventDetailPage() {
   }, []);
 
   const pendingRegs = registrations?.filter((r) => r.status === 'not_approved') ?? [];
-
-  const toggleSelectAll = useCallback(() => {
-    const pendingFiltered = (statusFilter === 'approved')
-      ? []
-      : pendingRegs.filter((r) => {
-          const q = search.toLowerCase();
-          return !q || r.name.toLowerCase().includes(q) || r.surname.toLowerCase().includes(q)
-            || r.email.toLowerCase().includes(q) || r.city.toLowerCase().includes(q);
-        });
-    if (pendingFiltered.every((r) => selectedIds.has(r.id)) && pendingFiltered.length > 0) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(pendingFiltered.map((r) => r.id)));
-    }
-  }, [pendingRegs, selectedIds, search, statusFilter]);
 
   const formLink = event ? `${APP_URL}/e/${event.slug}` : '';
 
@@ -117,6 +128,15 @@ export default function EventDetailPage() {
       r.city.toLowerCase().includes(q)
     );
   });
+
+  const toggleSelectAll = useCallback(() => {
+    const visible = (filtered ?? []);
+    if (visible.every((r) => selectedIds.has(r.id)) && visible.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visible.map((r) => r.id)));
+    }
+  }, [filtered, selectedIds]);
 
   function exportCSV() {
     if (!registrations?.length) return;
@@ -305,7 +325,7 @@ export default function EventDetailPage() {
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Bulk approve button */}
+            {/* Bulk approve button — only for selected pending rows */}
             {selectedPendingIds.length > 0 && (
               <Button
                 size="sm"
@@ -319,6 +339,22 @@ export default function EventDetailPage() {
                   <CheckCheck className="w-4 h-4" />
                 )}
                 Approve {selectedPendingIds.length} selected
+              </Button>
+            )}
+            {/* Bulk delete button — for any selected rows */}
+            {selectedIds.size > 0 && (
+              <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-500 text-white"
+                onClick={() => setBulkDeleteConfirm(true)}
+                disabled={bulkDeleteMutation.isPending}
+              >
+                {bulkDeleteMutation.isPending ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                Delete {selectedIds.size} selected
               </Button>
             )}
             <div className="relative">
@@ -347,18 +383,30 @@ export default function EventDetailPage() {
               <span className="font-semibold">{pendingCount} registration{pendingCount !== 1 ? 's' : ''}</span> awaiting your approval.
               Registrants will only see their QR pass after you approve.
             </p>
-            {statusFilter === 'all' && pendingCount > 0 && (
+            <div className="ml-auto flex items-center gap-1 shrink-0">
+              {/* Select all pending (across all pages/filters) */}
               <Button
                 variant="ghost"
                 size="sm"
-                className="ml-auto shrink-0 h-7 text-xs text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10"
-                onClick={toggleSelectAll}
+                className="h-7 text-xs text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10"
+                onClick={() => {
+                  const allPendingSelected = pendingRegs.every((r) => selectedIds.has(r.id)) && pendingRegs.length > 0;
+                  if (allPendingSelected) {
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      pendingRegs.forEach((r) => next.delete(r.id));
+                      return next;
+                    });
+                  } else {
+                    setSelectedIds((prev) => new Set([...prev, ...pendingRegs.map((r) => r.id)]));
+                  }
+                }}
               >
-                {selectedPendingIds.length === pendingRegs.length && pendingRegs.length > 0
-                  ? <><Square className="w-3 h-3" /> Deselect all</>
+                {pendingRegs.every((r) => selectedIds.has(r.id)) && pendingRegs.length > 0
+                  ? <><Square className="w-3 h-3" /> Deselect pending</>
                   : <><CheckSquare className="w-3 h-3" /> Select all pending</>}
               </Button>
-            )}
+            </div>
           </div>
         )}
 
@@ -392,20 +440,16 @@ export default function EventDetailPage() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    {/* Checkbox — only for pending */}
-                    {isPending ? (
-                      <button
-                        onClick={() => toggleSelect(reg.id)}
-                        className="mt-0.5 shrink-0 text-zinc-500 hover:text-violet-400 transition-colors"
-                        aria-label={isSelected ? 'Deselect' : 'Select'}
-                      >
-                        {isSelected
-                          ? <CheckSquare className="w-4 h-4 text-violet-400" />
-                          : <Square className="w-4 h-4" />}
-                      </button>
-                    ) : (
-                      <div className="mt-0.5 w-4 shrink-0" />
-                    )}
+                    {/* Checkbox — all rows */}
+                    <button
+                      onClick={() => toggleSelect(reg.id)}
+                      className="mt-0.5 shrink-0 text-zinc-500 hover:text-violet-400 transition-colors"
+                      aria-label={isSelected ? 'Deselect' : 'Select'}
+                    >
+                      {isSelected
+                        ? <CheckSquare className="w-4 h-4 text-violet-400" />
+                        : <Square className="w-4 h-4" />}
+                    </button>
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
@@ -450,6 +494,13 @@ export default function EventDetailPage() {
                           <CheckCircle2 className="w-4 h-4 text-green-400" />
                         </div>
                       )}
+                      <button
+                        onClick={() => setDeleteTarget(reg)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        title="Delete registration"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -466,6 +517,30 @@ export default function EventDetailPage() {
         )}
       </div>
       )}
+
+      {/* Delete registration confirm dialog */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Registration"
+        description={deleteTarget
+          ? `Remove ${deleteTarget.name} ${deleteTarget.surname}'s registration? This cannot be undone.`
+          : ''}
+        confirmLabel="Delete"
+        loading={deleteMutation.isPending}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Bulk delete confirm dialog */}
+      <ConfirmDialog
+        open={bulkDeleteConfirm}
+        title={`Delete ${selectedIds.size} Registration${selectedIds.size !== 1 ? 's' : ''}`}
+        description={`Permanently remove ${selectedIds.size} selected registration${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`}
+        confirmLabel={`Delete ${selectedIds.size} selected`}
+        loading={bulkDeleteMutation.isPending}
+        onConfirm={() => bulkDeleteMutation.mutate([...selectedIds])}
+        onCancel={() => setBulkDeleteConfirm(false)}
+      />
     </div>
   );
 }
