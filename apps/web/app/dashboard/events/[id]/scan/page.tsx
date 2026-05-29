@@ -341,7 +341,7 @@ export default function ScannerPage() {
       <video
         ref={videoRef}
         className={cn(
-          'fixed inset-0 w-full h-full object-cover',
+          'fixed inset-0 w-full h-full object-cover pointer-events-none',
           state.type === 'scanning' ? 'opacity-100' : 'opacity-0',
         )}
         playsInline
