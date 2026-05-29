@@ -213,10 +213,20 @@ authRouter.post('/signup/org', authLimiter, zValidator('json', orgSignupSchema),
 
   const userId = data.user.id;
 
-  // If trigger hasn't run yet (race condition edge case), insert profile manually
-  const { data: existingProfile } = await db.from('users').select('id').eq('id', userId).maybeSingle();
-  if (!existingProfile) {
-    await db.from('users').insert({ id: userId, name: adminName, email }).select().single();
+  // Ensure profile row exists — use upsert to handle both id and email conflicts gracefully
+  const { error: profileError } = await db.from('users').upsert(
+    { id: userId, name: adminName, email },
+    { onConflict: 'id' },
+  );
+  if (profileError) {
+    // If email conflicts (stale row with wrong id), fix it
+    await db.from('users').delete().eq('email', email);
+    const { error: retryError } = await db.from('users').insert({ id: userId, name: adminName, email });
+    if (retryError) {
+      await db.auth.admin.deleteUser(userId);
+      console.error('[signup/org] profile insert failed', retryError);
+      return c.json({ error: 'Failed to create user profile' }, 500);
+    }
   }
 
   // Create org (pending approval)
@@ -239,6 +249,7 @@ authRouter.post('/signup/org', authLimiter, zValidator('json', orgSignupSchema),
   if (memberError || !member) {
     await db.auth.admin.deleteUser(userId);
     await db.from('orgs').delete().eq('id', org.id);
+    console.error('[signup/org] member insert failed', memberError);
     return c.json({ error: 'Failed to create admin role' }, 500);
   }
 
