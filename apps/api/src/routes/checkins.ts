@@ -65,6 +65,32 @@ checkinRouter.get('/:uniqueCode', async (c) => {
   return c.json({ registration, event, approvedAt });
 });
 
+// POST /checkin/verify-password — validate gate password before opening scanner
+// Lightweight check: just bcrypt compare, no registration involved.
+checkinRouter.post(
+  '/verify-password',
+  zValidator('json', z.object({ eventId: z.string().uuid(), adminPassword: z.string().min(1) })),
+  async (c) => {
+    const { eventId, adminPassword } = c.req.valid('json');
+
+    const { data: event } = await db
+      .from('events')
+      .select('admin_password')
+      .eq('id', eventId)
+      .maybeSingle();
+
+    if (!event?.admin_password) {
+      return c.json({ error: 'Event not found' }, 404);
+    }
+
+    const match = await bcrypt.compare(adminPassword, event.admin_password);
+    if (!match) {
+      return c.json({ valid: false }, 200);
+    }
+    return c.json({ valid: true }, 200);
+  }
+);
+
 // POST /checkin/:uniqueCode — approve entry (requires admin password, rate-limited)
 checkinRouter.post(
   '/:uniqueCode',

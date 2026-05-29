@@ -321,14 +321,33 @@ export default function ScannerPage() {
     setState({ type: 'scanning' });
   }
 
-  // ── Setup — open camera (not a form submit, avoids iOS Safari autofill interception)
+  // ── Setup — validate password then open camera
 
-  function handleOpenCamera() {
+  async function handleOpenCamera() {
     if (!gatePassword.trim()) {
       setPasswordError('Enter the gate password for this event');
       return;
     }
     setPasswordError('');
+
+    // Validate gate password against the event before opening camera
+    setState({ type: 'requesting' }); // shows spinner while checking
+    try {
+      const { data } = await api.post<{ valid: boolean }>(`/checkin/verify-password`, {
+        eventId,
+        adminPassword: gatePassword,
+      });
+      if (!data.valid) {
+        setState({ type: 'setup' });
+        setPasswordError('Wrong gate password — check with your event admin.');
+        return;
+      }
+    } catch {
+      setState({ type: 'setup' });
+      setPasswordError('Could not verify password. Check your connection and try again.');
+      return;
+    }
+
     startCamera();
   }
 
