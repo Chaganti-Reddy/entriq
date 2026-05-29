@@ -106,7 +106,7 @@ export default function ScannerPage() {
     if (!navigator.mediaDevices?.getUserMedia) {
       setState({
         type: 'error',
-        message: 'Camera API not available. Make sure you are on HTTPS and using a supported browser.',
+        message: 'Camera API not available. Make sure you are on HTTPS and using a supported browser (Safari 11+, Chrome, Firefox).',
       });
       return;
     }
@@ -115,11 +115,20 @@ export default function ScannerPage() {
     // the user gesture chain is consumed on the first call. Don't loop with await.
     setState({ type: 'requesting' });
 
+    // Overall 12-second timeout — prevents getting stuck on "requesting" forever
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      setState({ type: 'error', message: 'Camera timed out. Please tap "Try again" or check your browser permissions.' });
+    }, 12_000);
+
     let stream: MediaStream | null = null;
     try {
       // First attempt: rear camera, no resolution constraints (most compatible with iOS Safari)
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     } catch (firstErr) {
+      clearTimeout(timeoutId);
+      if (timedOut) return;
       const name = (firstErr as { name?: string }).name ?? '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         setState({ type: 'error', message: 'Camera permission denied. Go to Settings → Safari → Camera and set to Allow.' });
@@ -138,6 +147,9 @@ export default function ScannerPage() {
         return;
       }
     }
+
+    clearTimeout(timeoutId);
+    if (timedOut) return;
 
     if (!stream) {
       setState({ type: 'error', message: 'Could not acquire camera stream.' });
@@ -164,7 +176,7 @@ export default function ScannerPage() {
       }
     }
 
-    setState({ type: 'scanning' });
+    if (!timedOut) setState({ type: 'scanning' });
   }, [stopCamera]);
 
   useEffect(() => {
@@ -309,10 +321,9 @@ export default function ScannerPage() {
     setState({ type: 'scanning' });
   }
 
-  // ── Setup form submit ──────────────────────────────────────────────────────
+  // ── Setup — open camera (not a form submit, avoids iOS Safari autofill interception)
 
-  function handleSetupSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function handleOpenCamera() {
     if (!gatePassword.trim()) {
       setPasswordError('Enter the gate password for this event');
       return;
@@ -364,7 +375,7 @@ export default function ScannerPage() {
                 Enter the gate password once to start scanning
               </p>
 
-              <form onSubmit={handleSetupSubmit} className="space-y-4">
+              <div className="space-y-4">
                 <div>
                   <label className="text-xs text-zinc-500 uppercase tracking-widest block mb-2">
                     Gate password
@@ -374,7 +385,10 @@ export default function ScannerPage() {
                       type={showPassword ? 'text' : 'password'}
                       value={gatePassword}
                       onChange={(e) => { setGatePassword(e.target.value); setPasswordError(''); }}
+                      onKeyDown={(e) => e.key === 'Enter' && handleOpenCamera()}
                       placeholder="Enter event gate password"
+                      autoComplete="off"
+                      inputMode="text"
                       className={cn(
                         'w-full h-14 bg-zinc-900 border rounded-xl px-4 pr-12 text-lg text-zinc-100',
                         'placeholder:text-zinc-600 outline-none transition-all',
@@ -382,7 +396,6 @@ export default function ScannerPage() {
                           ? 'border-red-500'
                           : 'border-zinc-700 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20',
                       )}
-                      autoComplete="current-password"
                     />
                     <button
                       type="button"
@@ -399,14 +412,15 @@ export default function ScannerPage() {
                 </div>
 
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleOpenCamera}
                   className="w-full h-14 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-[0.98]
                     text-white text-base font-semibold flex items-center justify-center gap-2 transition-all"
                 >
                   <Camera className="w-5 h-5" />
-                  Open Camera & Start Scanning
+                  Open Camera &amp; Start Scanning
                 </button>
-              </form>
+              </div>
             </div>
           </motion.div>
         )}
