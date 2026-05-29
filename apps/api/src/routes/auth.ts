@@ -110,6 +110,51 @@ async function buildAuthResponse(userId: string): Promise<AuthResponse | null> {
     org = orgData;
   }
 
+  // No org membership — check if user has event-level access
+  if (!member) {
+    const { data: eventAssignments } = await db
+      .from('event_members')
+      .select('org_id')
+      .eq('user_id', user.id)
+      .limit(1);
+
+    if (eventAssignments?.length) {
+      const { data: orgData } = await db
+        .from('orgs')
+        .select('id, name, status')
+        .eq('id', eventAssignments[0].org_id)
+        .maybeSingle();
+
+      if (orgData) {
+        const payload: JWTPayload = {
+          sub:          user.id,
+          email:        user.email,
+          name:         user.name,
+          role:         'co_organizer',
+          orgId:        orgData.id,
+          orgName:      orgData.name,
+          orgStatus:    'approved',
+          isEventMember: true,
+        };
+        const { token, refreshToken } = await buildTokens(payload, user.id);
+        return {
+          token,
+          refreshToken,
+          user: {
+            id:            user.id,
+            name:          user.name,
+            email:         user.email,
+            role:          'co_organizer',
+            orgId:         orgData.id,
+            orgName:       orgData.name,
+            orgStatus:     'approved',
+            isEventMember: true,
+          },
+        };
+      }
+    }
+  }
+
   const payload = buildUserPayload(user, member ?? null, org);
   const { token, refreshToken } = await buildTokens(payload, user.id);
 

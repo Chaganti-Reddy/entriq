@@ -21,12 +21,12 @@ export function requireRole(...roles: MemberRole[]): MiddlewareHandler<AppEnv> {
       return;
     }
 
-    // Must be an org member (has memberId in token)
-    if (!user.memberId || !user.orgId) {
+    // Must have org context (orgId present in token)
+    if (!user.orgId) {
       return c.json({ error: 'Forbidden' }, 403);
     }
 
-    // Org must be approved
+    // Org must be approved (event-only members always have orgStatus: 'approved')
     if (user.orgStatus !== 'approved') {
       return c.json(
         {
@@ -60,13 +60,13 @@ export const requireEventAccess: MiddlewareHandler<AppEnv> = async (c, next) => 
   // Super admins bypass
   if (user.role === 'super_admin') { await next(); return; }
 
-  // Must have org membership
-  if (!user.memberId || !user.orgId) return c.json({ error: 'Forbidden' }, 403);
+  // Must have org context
+  if (!user.orgId) return c.json({ error: 'Forbidden' }, 403);
   if (user.orgStatus !== 'approved') {
     return c.json({ error: 'Your organisation is pending approval', code: 'ORG_NOT_APPROVED' }, 403);
   }
 
-  // Admins have access to all events in their org — verify event belongs to org
+  // Admins (org-wide, non event-only) have access to all events
   if (user.role === 'admin') { await next(); return; }
 
   // Co-organizers: check event_members

@@ -90,11 +90,13 @@ export interface JWTPayload {
   email:      string;
   name:       string;
   // Org member fields — present only if user has an org role
-  memberId?:  string;      // org_members.id
+  memberId?:  string;      // org_members.id (absent for event-only members)
   role?:      MemberRole | 'super_admin';
   orgId?:     string;
   orgName?:   string;
   orgStatus?: OrgStatus;
+  // Set to true when access is via event_members only (not org_members)
+  isEventMember?: boolean;
   iat?:       number;
   exp?:       number;
 }
@@ -181,11 +183,12 @@ export interface AuthResponse {
     name:      string;
     email:     string;
     // Org member fields — present if user is an org member
-    memberId?:  string;
-    role?:      MemberRole;
-    orgId?:     string;
-    orgName?:   string;
-    orgStatus?: OrgStatus;
+    memberId?:    string;
+    role?:        MemberRole;
+    orgId?:       string;
+    orgName?:     string;
+    orgStatus?:   OrgStatus;
+    isEventMember?: boolean;
   };
 }
 
@@ -198,6 +201,8 @@ export interface SuperAdminAuthResponse {
 export interface EventWithCounts extends Omit<Event, 'admin_password'> {
   registration_count: number;
   checkin_count:      number;
+  // Per-request: the calling user's role on this event (null = admin, has full access)
+  userEventRole?: 'co_organizer' | 'scanner' | null;
 }
 
 /** org_members row joined with user name/email for display */

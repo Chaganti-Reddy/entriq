@@ -50,12 +50,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!_hasHydrated || !isAuthenticated || !user) return null;
 
-  const isAdmin = user.role === 'admin';
+  const isAdmin       = user.role === 'admin';
+  const isEventMember = (user as any).isEventMember === true;
 
   const navItems = [
     { label: 'Events',    href: '/dashboard',      icon: CalendarDays },
     ...(isAdmin ? [{ label: 'Team', href: '/dashboard/team', icon: Users }] : []),
-    { label: 'Settings',  href: '/dashboard/settings', icon: Settings2 },
+    ...(!isEventMember ? [{ label: 'Settings', href: '/dashboard/settings', icon: Settings2 }] : []),
   ];
 
   const externalLinks = [
@@ -126,9 +127,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 'text-[10px] px-2 py-0.5 rounded-full font-medium',
                 isAdmin
                   ? 'bg-violet-500/15 text-violet-400 border border-violet-500/20'
-                  : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                  : isEventMember
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
               )}>
-                {isAdmin ? 'Admin' : 'Co-organizer'}
+                {isAdmin ? 'Admin' : isEventMember ? 'Event Member' : 'Co-organizer'}
               </span>
             </div>
               <p className="text-sm font-medium text-zinc-100 truncate mt-0.5">{user.orgName}</p>

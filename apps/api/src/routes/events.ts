@@ -191,11 +191,25 @@ eventsRouter.get('/:id', requireRole('co_organizer', 'admin'), requireEventAcces
     db.from('checkins').select('*', { count: 'exact', head: true }).eq('event_id', id),
   ]);
 
+  // Include the calling user's event-specific role so the frontend can show/hide UI
+  let userEventRole: 'co_organizer' | 'scanner' | null = null;
+  if (user.role === 'co_organizer') {
+    const { data: em } = await db
+      .from('event_members')
+      .select('role')
+      .eq('event_id', id)
+      .eq('user_id', user.sub)
+      .maybeSingle();
+    // If in event_members: use that role. If not (org-wide co-organizer): full access
+    userEventRole = (em?.role as 'co_organizer' | 'scanner') ?? 'co_organizer';
+  }
+
   const { admin_password: _, ...safeEvent } = event;
   return c.json({
     ...safeEvent,
     registration_count: regCount ?? 0,
     checkin_count: checkinCount ?? 0,
+    userEventRole,
   });
 });
 

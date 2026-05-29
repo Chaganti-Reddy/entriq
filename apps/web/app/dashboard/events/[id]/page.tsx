@@ -30,7 +30,8 @@ export default function EventDetailPage() {
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin       = user?.role === 'admin';
+  const isEventMember = (user as any)?.isEventMember === true;
 
   const { data: event, isLoading: eventLoading } = useQuery<EventWithCounts>({
     queryKey: ['event', id],
@@ -93,6 +94,9 @@ export default function EventDetailPage() {
     ? Math.round(((event.checkin_count) / Math.max(event.registration_count, 1)) * 100)
     : 0;
 
+  // Scanner role: can only scan, cannot see registrations or analytics
+  const isScanner = event?.userEventRole === 'scanner';
+
   if (eventLoading) {
     return (
       <div className="flex justify-center py-32">
@@ -144,7 +148,8 @@ export default function EventDetailPage() {
         }
       />
 
-      {/* Stats */}
+      {/* Stats — hidden for scanner role */}
+      {!isScanner && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard label="Registered"  value={event.registration_count} icon={Users}          accentColor="default" />
         <StatCard label="Checked in"  value={event.checkin_count}      icon={CheckCircle2}   accentColor="green"  />
@@ -162,8 +167,28 @@ export default function EventDetailPage() {
           <Progress value={checkinRate} />
         </div>
       </div>
+      )}
 
-      {/* Registration link */}
+      {/* Scanner-only view — simple focused prompt */}
+      {isScanner && (
+        <div className="flex flex-col items-center justify-center py-20 text-center gap-6">
+          <div className="w-20 h-20 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+            <ScanLine className="w-9 h-9 text-violet-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-100 mb-1">Ready to scan</h2>
+            <p className="text-sm text-zinc-500">You're assigned as a scanner for <span className="text-zinc-300 font-medium">{event.name}</span>.</p>
+          </div>
+          <Button size="lg" asChild className="bg-violet-600 hover:bg-violet-500 text-white">
+            <Link href={`/dashboard/events/${id}/scan`}>
+              <ScanLine className="w-5 h-5" /> Open Scanner
+            </Link>
+          </Button>
+        </div>
+      )}
+
+      {/* Registration link — hidden for scanner */}
+      {!isScanner && (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 mb-6">
         <p className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Registration link</p>
         <div className="flex items-center gap-3 p-3 bg-zinc-950 rounded-xl border border-zinc-800">
@@ -177,8 +202,10 @@ export default function EventDetailPage() {
           </Button>
         </div>
       </div>
+      )}
 
-      {/* Registrations table */}
+      {/* Registrations table — hidden for scanner */}
+      {!isScanner && (
       <div>
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <h2 className="text-lg font-semibold text-zinc-100">
@@ -259,6 +286,7 @@ export default function EventDetailPage() {
           </p>
         )}
       </div>
+      )}
     </div>
   );
 }
