@@ -387,3 +387,15 @@ authRouter.post('/refresh', zValidator('json', refreshSchema), async (c) => {
     return c.json({ error: 'Invalid or expired refresh token' }, 401);
   }
 });
+
+// POST /auth/forgot-password — send Supabase password reset email
+authRouter.post('/forgot-password', authLimiter, zValidator('json', z.object({
+  email: z.string().email(),
+})), async (c) => {
+  const { email } = c.req.valid('json');
+  // Always return 200 to prevent email enumeration
+  await anonDb.auth.resetPasswordForEmail(email, {
+    redirectTo: `${APP_URL()}/auth/reset-password`,
+  });
+  return c.json({ ok: true });
+});

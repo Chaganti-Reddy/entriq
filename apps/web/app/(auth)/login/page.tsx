@@ -96,6 +96,9 @@ function LoginForm() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <Label htmlFor="password">Password</Label>
+              <Link href="/forgot-password" className="text-xs text-zinc-500 hover:text-violet-400 transition-colors">
+                Forgot password?
+              </Link>
             </div>
             <PasswordInput id="password" error={!!errors.password} autoComplete="current-password" {...register('password')} />
             {errors.password && <p className="text-xs text-red-400 mt-1 animate-fade-in">{errors.password.message}</p>}
