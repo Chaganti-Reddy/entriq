@@ -353,7 +353,7 @@ export default function ScannerPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-zinc-950 overflow-hidden select-none">
+    <div className="min-h-screen bg-zinc-950 select-none">
 
       {/* Always-present video + hidden canvas for scanning */}
       <video
@@ -522,41 +522,41 @@ export default function ScannerPage() {
           <motion.div key="pending"
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed inset-0 bg-zinc-950 overflow-y-auto"
+            style={{ position: 'fixed', inset: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="bg-zinc-950"
           >
-            <div className="min-h-full flex flex-col p-6">
-              <button onClick={manualReset} className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 text-sm mb-6 self-start">
+            <div className="flex flex-col p-6 pb-10 gap-4">
+              <button onClick={manualReset} className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 text-sm self-start">
                 <ArrowLeft className="w-4 h-4" /> Back to scanner
               </button>
 
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full
-                bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm font-medium mb-5">
+                bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm font-medium">
                 <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
                 PENDING ENTRY
               </div>
 
-              <h2 className="text-2xl font-bold text-zinc-100 mb-4">
+              <h2 className="text-2xl font-bold text-zinc-100">
                 {state.registration.name} {state.registration.surname}
               </h2>
 
-              <div className="space-y-2 text-zinc-300 text-base mb-4">
+              <div className="space-y-2 text-zinc-300 text-base">
                 <p>📍 {state.registration.city}, {state.registration.state}</p>
                 <p>📞 {state.registration.mobile}</p>
                 <p>💼 {state.registration.profession}</p>
               </div>
 
-              <div className="pt-4 border-t border-zinc-800 mb-3">
+              <div className="pt-4 border-t border-zinc-800">
                 <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Event</p>
                 <p className="text-zinc-300 font-medium">{state.event.name}</p>
               </div>
 
-              <div className="mb-4">
+              <div>
                 <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Entry ID</p>
                 <code className="text-sm text-zinc-400 font-mono">{state.registration.unique_code}</code>
               </div>
 
-              {/* Buttons pushed to bottom — mt-auto ensures they're always reachable */}
-              <div className="mt-auto pt-6 space-y-3">
+              <div className="space-y-3 pt-4">
                 <button
                   onClick={() => handleApprove(state.uniqueCode)}
                   className="w-full h-16 rounded-2xl bg-green-600 hover:bg-green-500 active:scale-[0.98]
