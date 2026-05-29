@@ -39,12 +39,13 @@ CREATE TABLE org_members (
 );
 
 -- ─── SUPER ADMINS ─────────────────────────────────────────────────────────────
--- Platform-level admins — separate from regular users, use bcrypt password.
+-- Platform-level admins. Password managed by Supabase Auth.
+-- password_hash kept nullable for backwards compatibility during migration.
 CREATE TABLE super_admins (
   id            UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
   name          TEXT        NOT NULL,
   email         TEXT        NOT NULL UNIQUE,
-  password_hash TEXT        NOT NULL,
+  password_hash TEXT,       -- nullable: password now managed by Supabase Auth
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -330,19 +330,27 @@ authRouter.post('/exchange', authLimiter, zValidator('json', exchangeSchema), as
   return c.json(res);
 });
 
-// POST /auth/super-admin/login — super admin login (separate token space, bcrypt)
+// POST /auth/super-admin/login — super admin login via Supabase Auth + role check
 authRouter.post('/super-admin/login', authLimiter, zValidator('json', superAdminLoginSchema), async (c) => {
   const { email, password } = c.req.valid('json');
 
+  // Authenticate via Supabase Auth
+  const { data, error } = await anonDb.auth.signInWithPassword({ email, password });
+  if (error || !data.user) {
+    return c.json({ error: 'Invalid email or password' }, 401);
+  }
+
+  // Verify this auth user is actually a super admin
   const { data: sa } = await db
     .from('super_admins')
-    .select('id, name, email, password_hash')
+    .select('id, name, email')
     .eq('email', email)
     .maybeSingle();
-  if (!sa) return c.json({ error: 'Invalid email or password' }, 401);
 
-  const valid = await bcrypt.compare(password, sa.password_hash);
-  if (!valid) return c.json({ error: 'Invalid email or password' }, 401);
+  // Sign out of Supabase session — we use our own JWT
+  await anonDb.auth.signOut();
+
+  if (!sa) return c.json({ error: 'Invalid email or password' }, 401);
 
   const payload: JWTPayload = { sub: sa.id, email: sa.email, name: sa.name, role: 'super_admin' };
   const token = await new SignJWT(payload as unknown as Record<string, unknown>)

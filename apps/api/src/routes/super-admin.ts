@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { db } from '../services/db.js';
+import { db, anonDb } from '../services/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireSuperAdmin } from '../middleware/roles.js';
 import type { AppEnv } from '../types/index.js';
@@ -169,7 +169,7 @@ superAdminRouter.patch(
   }
 );
 
-// PATCH /super-admin/password — change super admin password (bcrypt)
+// PATCH /super-admin/password — change super admin password via Supabase Auth
 superAdminRouter.patch(
   '/password',
   zValidator('json', z.object({
@@ -180,22 +180,26 @@ superAdminRouter.patch(
     const user = c.get('user');
     const { currentPassword, newPassword } = c.req.valid('json');
 
+    // Verify current password via Supabase Auth signIn
     const { data: sa } = await db
       .from('super_admins')
-      .select('password_hash')
+      .select('email')
       .eq('id', user.sub)
       .maybeSingle();
-
     if (!sa) return c.json({ error: 'Account not found' }, 404);
 
-    const bcrypt = await import('bcryptjs');
-    const valid  = await bcrypt.compare(currentPassword, sa.password_hash);
-    if (!valid) return c.json({ error: 'Current password is incorrect' }, 400);
+    const { data: authData, error: authError } = await anonDb.auth.signInWithPassword({ email: sa.email, password: currentPassword });
+    if (authError || !authData.user) {
+      return c.json({ error: 'Current password is incorrect' }, 400);
+    }
 
-    const newHash = await bcrypt.hash(newPassword, 12);
-    const { error } = await db.from('super_admins').update({ password_hash: newHash }).eq('id', user.sub);
-    if (error) return c.json({ error: 'Failed to update password' }, 500);
+    // Update password in Supabase Auth
+    const { error: updateError } = await db.auth.admin.updateUserById(authData.user.id, {
+      password: newPassword,
+    });
+    await anonDb.auth.signOut();
 
+    if (updateError) return c.json({ error: 'Failed to update password' }, 500);
     return c.json({ ok: true });
   }
 );
