@@ -76,7 +76,7 @@ CREATE TABLE registrations (
   other_info    TEXT,
   unique_code   TEXT        NOT NULL UNIQUE,
   status        TEXT        DEFAULT 'not_approved'
-                            CHECK (status IN ('not_approved', 'approved')),
+                            CHECK (status IN ('not_approved', 'admin_approved', 'approved')),
   registered_at TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT uq_registrations_event_user UNIQUE (event_id, user_id)
 );
