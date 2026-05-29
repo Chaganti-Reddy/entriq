@@ -16,6 +16,7 @@ import { formatTime } from '@/lib/utils';
 
 type ScannerState =
   | { type: 'setup' }           // enter gate password
+  | { type: 'requesting' }      // waiting for camera permission dialog
   | { type: 'scanning' }        // camera open, waiting for QR
   | { type: 'loading' }         // QR found, fetching registration
   | { type: 'pending'; registration: RegistrationInfo; event: EventInfo; uniqueCode: string }
@@ -101,38 +102,45 @@ export default function ScannerPage() {
   const startCamera = useCallback(async () => {
     stopCamera();
 
-    // Try progressively simpler constraints — mobile browsers can be strict.
-    // 1st: rear camera + ideal resolution
-    // 2nd: rear camera only (no resolution)
-    // 3rd: any camera (front is fine too — some tablets only have front)
-    const constraints: MediaStreamConstraints[] = [
-      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-      { video: { facingMode: { ideal: 'environment' } } },
-      { video: true },
-    ];
+    // Guard: mediaDevices not available (HTTP context, old browser, etc.)
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setState({
+        type: 'error',
+        message: 'Camera API not available. Make sure you are on HTTPS and using a supported browser.',
+      });
+      return;
+    }
+
+    // Show spinner BEFORE calling getUserMedia — iOS shows a permission dialog and
+    // the user gesture chain is consumed on the first call. Don't loop with await.
+    setState({ type: 'requesting' });
 
     let stream: MediaStream | null = null;
-    let lastErr: unknown;
-    for (const c of constraints) {
+    try {
+      // First attempt: rear camera, no resolution constraints (most compatible with iOS Safari)
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    } catch (firstErr) {
+      const name = (firstErr as { name?: string }).name ?? '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setState({ type: 'error', message: 'Camera permission denied. Go to Settings → Safari → Camera and set to Allow.' });
+        return;
+      }
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setState({ type: 'error', message: 'No camera found on this device.' });
+        return;
+      }
+      // OverconstrainedError or other — fall back to any camera (front-facing tablet etc.)
       try {
-        stream = await navigator.mediaDevices.getUserMedia(c);
-        break; // got a stream — stop trying
-      } catch (err) {
-        lastErr = err;
-        // NotAllowedError = user denied permission — no point retrying
-        if ((err as { name?: string }).name === 'NotAllowedError') break;
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      } catch (fallbackErr) {
+        const fn = (fallbackErr as { name?: string }).name ?? 'Unknown';
+        setState({ type: 'error', message: `Could not start camera (${fn}). Please try again.` });
+        return;
       }
     }
 
     if (!stream) {
-      const name = (lastErr as { name?: string })?.name ?? 'UnknownError';
-      if (name === 'NotAllowedError') {
-        setState({ type: 'error', message: 'Camera permission denied. Please allow camera access in your browser settings and try again.' });
-      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        setState({ type: 'error', message: 'No camera found on this device.' });
-      } else {
-        setState({ type: 'error', message: `Could not start camera (${name}). Try reloading the page.` });
-      }
+      setState({ type: 'error', message: 'Could not acquire camera stream.' });
       return;
     }
 
@@ -140,16 +148,19 @@ export default function ScannerPage() {
 
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
-      // Wait for video metadata before calling play() — critical on iOS Safari
+
+      // Wait for loadedmetadata with a 5s timeout — iOS can be slow
       await new Promise<void>((resolve) => {
         const v = videoRef.current!;
-        if (v.readyState >= 2) { resolve(); return; }
-        v.addEventListener('loadedmetadata', () => resolve(), { once: true });
+        if (v.readyState >= 1) { resolve(); return; }
+        const tid = setTimeout(resolve, 5000); // timeout fallback
+        v.addEventListener('loadedmetadata', () => { clearTimeout(tid); resolve(); }, { once: true });
       });
+
       try {
         await videoRef.current.play();
       } catch {
-        // play() can throw on visibility-hidden contexts; usually recovers on its own
+        // play() rejection is non-fatal — iOS often still renders the stream
       }
     }
 
@@ -371,7 +382,6 @@ export default function ScannerPage() {
                           ? 'border-red-500'
                           : 'border-zinc-700 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20',
                       )}
-                      autoFocus
                       autoComplete="current-password"
                     />
                     <button
@@ -398,6 +408,23 @@ export default function ScannerPage() {
                 </button>
               </form>
             </div>
+          </motion.div>
+        )}
+
+        {/* ── REQUESTING: waiting for camera permission dialog ────────── */}
+        {state.type === 'requesting' && (
+          <motion.div key="requesting"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-zinc-950 flex flex-col items-center justify-center gap-5 p-6"
+          >
+            <div className="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+              <Camera className="w-8 h-8 text-violet-400 animate-pulse" />
+            </div>
+            <div className="text-center">
+              <p className="text-zinc-100 font-semibold text-lg">Requesting camera access</p>
+              <p className="text-zinc-500 text-sm mt-1">Please allow camera access when prompted by your browser.</p>
+            </div>
+            <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
           </motion.div>
         )}
 
