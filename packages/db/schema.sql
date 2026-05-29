@@ -39,14 +39,12 @@ CREATE TABLE org_members (
 );
 
 -- ─── SUPER ADMINS ─────────────────────────────────────────────────────────────
--- Platform-level admins. Password managed by Supabase Auth.
--- password_hash kept nullable for backwards compatibility during migration.
+-- Platform-level admins. Password managed by Supabase Auth — no password_hash here.
 CREATE TABLE super_admins (
-  id            UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name          TEXT        NOT NULL,
-  email         TEXT        NOT NULL UNIQUE,
-  password_hash TEXT,       -- nullable: password now managed by Supabase Auth
-  created_at    TIMESTAMPTZ DEFAULT NOW()
+  id         UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name       TEXT        NOT NULL,
+  email      TEXT        NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ─── EVENTS ───────────────────────────────────────────────────────────────────
