@@ -3,7 +3,7 @@
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-export type RegistrationStatus = 'not_approved' | 'approved';
+export type RegistrationStatus = 'not_approved' | 'admin_approved' | 'approved';
 export type OrgStatus          = 'pending' | 'approved' | 'rejected' | 'suspended';
 export type MemberRole         = 'admin' | 'co_organizer';
 export type MemberStatus       = 'active' | 'inactive';

@@ -138,7 +138,7 @@ registrationsRouter.post(
 
     const { error: updateError } = await db
       .from('registrations')
-      .update({ status: 'approved' })
+      .update({ status: 'admin_approved' })
       .in('id', authorizedIds)
       .eq('status', 'not_approved');
 
@@ -185,11 +185,12 @@ registrationsRouter.patch('/:id/approve', authMiddleware, requireRole('co_organi
     if (!assignment) return c.json({ error: 'You are not assigned to this event' }, 403);
   }
 
-  if (reg.status === 'approved') return c.json({ ok: true, alreadyApproved: true });
+  // Already admin-approved or checked in — idempotent
+  if (reg.status !== 'not_approved') return c.json({ ok: true, alreadyApproved: true });
 
   const { error: updateError } = await db
     .from('registrations')
-    .update({ status: 'approved' })
+    .update({ status: 'admin_approved' })
     .eq('id', id);
 
   if (updateError) {

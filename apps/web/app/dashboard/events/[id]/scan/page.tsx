@@ -259,7 +259,11 @@ export default function ScannerPage() {
           approvedAt: data.approvedAt ?? new Date().toISOString(),
         });
         scheduleReset();
+      } else if (data.registration.status === 'not_approved') {
+        setState({ type: 'invalid', message: 'This registration has not been approved by the admin yet.' });
+        scheduleReset();
       } else {
+        // admin_approved — valid QR, ready to check in at door
         setState({
           type: 'pending',
           registration: data.registration,
@@ -297,8 +301,12 @@ export default function ScannerPage() {
       }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
+      const code   = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
       if (status === 422) {
         setState({ type: 'wrong_password' });
+      } else if (status === 403 && code === 'NOT_ADMIN_APPROVED') {
+        setState({ type: 'invalid', message: 'Not admin approved yet. Admin must approve this registration first.' });
+        scheduleReset();
       } else {
         setState({ type: 'error', message: 'Failed to approve. Try again.' });
         scheduleReset();

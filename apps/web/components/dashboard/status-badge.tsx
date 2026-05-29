@@ -2,13 +2,16 @@
 import { Badge } from '@/components/ui/badge';
 
 interface StatusBadgeProps {
-  status: 'approved' | 'not_approved' | 'active' | 'inactive';
+  status: 'approved' | 'admin_approved' | 'not_approved' | 'active' | 'inactive';
   className?: string;
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   if (status === 'approved') {
     return <Badge variant="approved" dot className={className}>Checked in</Badge>;
+  }
+  if (status === 'admin_approved') {
+    return <Badge variant="pending" dot className={className}>Approved</Badge>;
   }
   if (status === 'not_approved') {
     return <Badge variant="pending" dot className={className}>Pending</Badge>;

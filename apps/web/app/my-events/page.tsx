@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import {
-  Gem, Calendar, MapPin, QrCode,
+  Gem, Calendar, MapPin, QrCode, CheckCircle2,
   LogOut, Building2, Settings, Clock, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 interface UserRegistration {
   id: string;
   unique_code: string;
-  status: 'not_approved' | 'approved';
+  status: 'not_approved' | 'admin_approved' | 'approved';
   registered_at: string;
   event: {
     id: string;
@@ -73,8 +73,8 @@ function downloadQR(canvasRef: React.RefObject<HTMLCanvasElement>, code: string)
 
 function RegistrationCard({ reg }: { reg: UserRegistration }) {
   const [expanded, setExpanded] = useState(false);
-  const isApproved  = reg.status === 'approved';
-  const isCheckedIn = reg.status === 'approved'; // kept for compatibility
+  const isApproved  = reg.status === 'admin_approved';
+  const isCheckedIn = reg.status === 'approved';
   const isPending   = reg.status === 'not_approved';
   const scanUrl     = `${APP_URL}/scan/${reg.unique_code}`;
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -93,8 +93,12 @@ function RegistrationCard({ reg }: { reg: UserRegistration }) {
               <span className="text-[10px] px-2 py-0.5 rounded-full font-medium border bg-yellow-500/10 text-yellow-400 border-yellow-500/20">
                 ⏳ Pending Approval
               </span>
-            ) : (
+            ) : isCheckedIn ? (
               <span className="text-[10px] px-2 py-0.5 rounded-full font-medium border bg-green-500/10 text-green-400 border-green-500/20">
+                ✓ Checked In
+              </span>
+            ) : (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium border bg-blue-500/10 text-blue-400 border-blue-500/20">
                 ✓ Approved
               </span>
             )}
@@ -117,7 +121,9 @@ function RegistrationCard({ reg }: { reg: UserRegistration }) {
         <button className="ml-4 shrink-0 text-zinc-400 hover:text-violet-400 transition-colors p-1">
           {isPending
             ? <Clock className="w-5 h-5 text-yellow-400" />
-            : <QrCode className="w-5 h-5" />}
+            : isCheckedIn
+              ? <CheckCircle2 className="w-5 h-5 text-green-400" />
+              : <QrCode className="w-5 h-5 text-blue-400" />}
         </button>
       </div>
 
@@ -141,8 +147,20 @@ function RegistrationCard({ reg }: { reg: UserRegistration }) {
                 Code: <code className="text-yellow-500/70 font-mono">{reg.unique_code}</code>
               </p>
             </div>
+          ) : isCheckedIn ? (
+            /* ── Already checked in at door ── */
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-[200px] h-[200px] rounded-xl bg-zinc-800 border border-green-500/20 flex items-center justify-center mx-auto">
+                <div className="text-center">
+                  <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-2" />
+                  <p className="text-xs text-green-400 font-medium">Entry confirmed</p>
+                  <p className="text-xs text-zinc-500 mt-1">QR already scanned at door</p>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-600">Code: <code className="text-violet-400 font-mono">{reg.unique_code}</code></p>
+            </div>
           ) : (
-            /* ── Approved — show QR ── */
+            /* ── Admin approved — show QR + download ── */
             <div className="flex flex-col items-center gap-3">
               <QRCanvas value={scanUrl} canvasRef={qrCanvasRef} />
               <p className="text-xs text-zinc-500">Show this QR at the entrance</p>

@@ -115,7 +115,12 @@ checkinRouter.post(
       return c.json({ ok: false, error: 'Invalid QR code', code: 'NOT_FOUND' }, 404);
     }
 
-    // Already approved — return idempotent response
+    // Not admin-approved yet — cannot enter
+    if (registration.status === 'not_approved') {
+      return c.json({ ok: false, error: 'Not approved by admin yet', code: 'NOT_ADMIN_APPROVED' }, 403);
+    }
+
+    // Already checked in at door
     if (registration.status === 'approved') {
       const { data: checkin } = await db
         .from('checkins')
@@ -164,7 +169,7 @@ checkinRouter.post(
       .from('registrations')
       .update({ status: 'approved' })
       .eq('id', registration.id)
-      .eq('status', 'not_approved') // atomic guard — only wins the race if still pending
+      .eq('status', 'admin_approved') // atomic guard — only wins if still admin_approved
       .select('id')
       .maybeSingle();
 

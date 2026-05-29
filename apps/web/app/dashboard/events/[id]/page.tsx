@@ -31,7 +31,7 @@ export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [statusFilter, setStatusFilter] = useState<'all' | 'not_approved' | 'approved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'not_approved' | 'admin_approved' | 'approved'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -106,8 +106,9 @@ export default function EventDetailPage() {
   const formLink = event ? `${APP_URL}/e/${event.slug}` : '';
 
   const filtered = registrations?.filter((r) => {
-    if (statusFilter === 'not_approved' && r.status !== 'not_approved') return false;
-    if (statusFilter === 'approved'     && r.status !== 'approved')     return false;
+    if (statusFilter === 'not_approved'  && r.status !== 'not_approved')  return false;
+    if (statusFilter === 'admin_approved' && r.status !== 'admin_approved') return false;
+    if (statusFilter === 'approved'       && r.status !== 'approved')       return false;
     const q = search.toLowerCase();
     return !q || (
       r.name.toLowerCase().includes(q) ||
@@ -148,8 +149,9 @@ export default function EventDetailPage() {
 
   const isScanner = event?.userEventRole === 'scanner';
 
-  const pendingCount  = registrations?.filter((r) => r.status === 'not_approved').length ?? 0;
-  const approvedCount = registrations?.filter((r) => r.status === 'approved').length ?? 0;
+  const pendingCount       = registrations?.filter((r) => r.status === 'not_approved').length ?? 0;
+  const adminApprovedCount = registrations?.filter((r) => r.status === 'admin_approved').length ?? 0;
+  const checkedInCount     = registrations?.filter((r) => r.status === 'approved').length ?? 0;
   const selectedPendingIds = [...selectedIds].filter(
     (sid) => registrations?.find((r) => r.id === sid)?.status === 'not_approved'
   );
@@ -276,15 +278,20 @@ export default function EventDetailPage() {
             {/* Status filter pills */}
             {registrations && registrations.length > 0 && (
               <div className="flex items-center gap-1">
-                {(['all', 'not_approved', 'approved'] as const).map((f) => {
-                  const label = f === 'all' ? `All (${registrations.length})` : f === 'not_approved' ? `Pending (${pendingCount})` : `Approved (${approvedCount})`;
+                {(['all', 'not_approved', 'admin_approved', 'approved'] as const).map((f) => {
+                  const label =
+                    f === 'all'           ? `All (${registrations.length})` :
+                    f === 'not_approved'  ? `Pending (${pendingCount})` :
+                    f === 'admin_approved'? `Approved (${adminApprovedCount})` :
+                                           `Checked In (${checkedInCount})`;
                   return (
                     <button
                       key={f}
                       onClick={() => { setStatusFilter(f); setSelectedIds(new Set()); }}
                       className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
                         statusFilter === f
-                          ? f === 'not_approved' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                          ? f === 'not_approved'  ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                            : f === 'admin_approved' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                             : f === 'approved' ? 'bg-green-500/20 text-green-300 border border-green-500/30'
                             : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
                           : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
@@ -333,7 +340,7 @@ export default function EventDetailPage() {
         </div>
 
         {/* Pending approval notice */}
-        {pendingCount > 0 && statusFilter !== 'approved' && (
+        {pendingCount > 0 && statusFilter !== 'admin_approved' && statusFilter !== 'approved' && (
           <div className="flex items-center gap-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-3 mb-4">
             <Clock className="w-4 h-4 text-yellow-400 shrink-0" />
             <p className="text-xs text-yellow-300">
@@ -360,7 +367,7 @@ export default function EventDetailPage() {
         ) : !filtered?.length ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
             <p className="text-zinc-500 text-sm">
-              {search ? 'No registrations match your search.' : statusFilter !== 'all' ? `No ${statusFilter === 'not_approved' ? 'pending' : 'approved'} registrations.` : 'No registrations yet.'}
+              {search ? 'No registrations match your search.' : statusFilter !== 'all' ? `No ${statusFilter === 'not_approved' ? 'pending' : statusFilter === 'admin_approved' ? 'approved' : 'checked-in'} registrations.` : 'No registrations yet.'}
             </p>
             {!search && statusFilter === 'all' && (
               <p className="text-zinc-600 text-xs mt-1">
