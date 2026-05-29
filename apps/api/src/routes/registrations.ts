@@ -101,8 +101,9 @@ registrationsRouter.get('/event/:eventId', authMiddleware, requireRole('co_organ
     .maybeSingle();
   if (!event) return c.json({ error: 'Event not found' }, 404);
 
-  // Co-organizers must be assigned to this specific event
-  if (user.role === 'co_organizer') {
+  // Event-only members must be assigned to this specific event.
+  // Org-level co-organizers (memberId set) bypass — org membership grants access.
+  if (user.role === 'co_organizer' && user.isEventMember) {
     const { data: assignment } = await db
       .from('event_members')
       .select('id')

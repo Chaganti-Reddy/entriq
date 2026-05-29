@@ -49,9 +49,12 @@ export function requireRole(...roles: MemberRole[]): MiddlewareHandler<AppEnv> {
 
 /**
  * requireEventAccess — for routes with :id (event id) param.
- * Admins: pass through (access to all events in their org).
- * Co-organizers: must be in event_members for this specific event.
- * Always verifies the event belongs to the user's org (IDOR prevention).
+ *
+ * Access rules (in order):
+ *  - super_admin: always passes
+ *  - admin (org member): passes — full access to all events in their org
+ *  - co_organizer with memberId (org-level): passes — org membership grants all-events access
+ *  - isEventMember (event-only, no org_members row): checked against event_members table
  */
 export const requireEventAccess: MiddlewareHandler<AppEnv> = async (c, next) => {
   const user    = c.get('user');
@@ -66,10 +69,14 @@ export const requireEventAccess: MiddlewareHandler<AppEnv> = async (c, next) => 
     return c.json({ error: 'Your organisation is pending approval', code: 'ORG_NOT_APPROVED' }, 403);
   }
 
-  // Admins (org-wide, non event-only) have access to all events
+  // Admins: full access to all events
   if (user.role === 'admin') { await next(); return; }
 
-  // Co-organizers: check event_members
+  // Org-level co-organizers (have a real org_members row — memberId is set):
+  // org membership already grants dashboard access; event_members is additive only.
+  if (user.memberId && !user.isEventMember) { await next(); return; }
+
+  // Event-only members: must be assigned to this specific event
   if (!eventId) return c.json({ error: 'Missing event id' }, 400);
 
   const { data: membership } = await db
@@ -83,7 +90,6 @@ export const requireEventAccess: MiddlewareHandler<AppEnv> = async (c, next) => 
     return c.json({ error: 'You are not assigned to this event' }, 403);
   }
 
-  // Store event role in context for downstream handlers
   c.set('eventRole' as any, membership.role);
   await next();
 };

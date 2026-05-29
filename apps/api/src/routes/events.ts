@@ -69,14 +69,16 @@ eventsRouter.use('*', authMiddleware);
 // Write routes (POST/PUT/DELETE): per-route override to admin-only (see below)
 
 // GET /events — list events for the logged-in org
-// Admins: all events. Co-organizers: only events they are assigned to via event_members.
+// Admin: all events.
+// Org co-organizer (has memberId, not isEventMember): all events — org membership grants full access.
+// Event-only member (isEventMember): only events they're assigned to via event_members.
 eventsRouter.get('/', requireRole('co_organizer', 'admin'), async (c) => {
   const user = c.get('user');
 
   let eventIds: string[] | null = null;
 
-  // Co-organizers are scoped to their assigned events
-  if (user.role === 'co_organizer') {
+  // Only filter by event_members for event-only users (no org_members row)
+  if (user.role === 'co_organizer' && user.isEventMember) {
     const { data: assignments } = await db
       .from('event_members')
       .select('event_id')
@@ -84,7 +86,6 @@ eventsRouter.get('/', requireRole('co_organizer', 'admin'), async (c) => {
       .eq('org_id', user.orgId!);
 
     eventIds = (assignments ?? []).map((a) => a.event_id);
-    // If not assigned to any event, return empty
     if (eventIds.length === 0) return c.json([]);
   }
 
@@ -191,16 +192,17 @@ eventsRouter.get('/:id', requireRole('co_organizer', 'admin'), requireEventAcces
     db.from('checkins').select('*', { count: 'exact', head: true }).eq('event_id', id),
   ]);
 
-  // Include the calling user's event-specific role so the frontend can show/hide UI
+  // userEventRole: only relevant for event-only members (isEventMember).
+  // Org members (admin or co_organizer via org_members) always get full access regardless
+  // of any event_members row they might also have — org membership takes precedence.
   let userEventRole: 'co_organizer' | 'scanner' | null = null;
-  if (user.role === 'co_organizer') {
+  if (user.isEventMember && user.role === 'co_organizer') {
     const { data: em } = await db
       .from('event_members')
       .select('role')
       .eq('event_id', id)
       .eq('user_id', user.sub)
       .maybeSingle();
-    // If in event_members: use that role. If not (org-wide co-organizer): full access
     userEventRole = (em?.role as 'co_organizer' | 'scanner') ?? 'co_organizer';
   }
 
