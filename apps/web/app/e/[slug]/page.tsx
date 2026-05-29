@@ -154,7 +154,7 @@ export default function RegistrationFormPage() {
       <SimpleScreen>
         <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-4" />
         <h2 className="text-xl font-bold text-zinc-100 mb-2">Already registered!</h2>
-        <p className="text-zinc-400 text-sm mb-6">You&apos;re already registered for this event. View your QR pass in My Events.</p>
+        <p className="text-zinc-400 text-sm mb-6">You&apos;re already registered for this event. Check your QR pass status in My Events.</p>
         <Button className="w-full" asChild><Link href="/my-events">Go to My Events →</Link></Button>
       </SimpleScreen>
     );
@@ -168,7 +168,7 @@ export default function RegistrationFormPage() {
         mobile: data.mobile, profession: data.profession,
         otherInfo: data.otherInfo || undefined,
       });
-      toast.success('Registered! Your QR pass is ready.');
+      toast.success('Registered! Awaiting admin approval — check My Events for updates.');
       router.push('/my-events');
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;

@@ -6,12 +6,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
-import { Gem, Calendar, MapPin, QrCode, CheckCircle2, BadgeCheck, Loader2, LogOut, Building2, Settings } from 'lucide-react';
+import {
+  Gem, Calendar, MapPin, QrCode,
+  LogOut, Building2, Settings, Clock, Download,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/lib/api';
 import Link from 'next/link';
+import { toast } from 'sonner';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
@@ -32,20 +36,15 @@ interface UserRegistration {
 
 // ─── QR canvas component ──────────────────────────────────────────────────────
 
-function QRCanvas({ value, greyed }: { value: string; greyed: boolean }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
+const QRCanvas = ({ value, canvasRef }: { value: string; canvasRef: React.RefObject<HTMLCanvasElement> }) => {
   useEffect(() => {
     if (!canvasRef.current) return;
     QRCode.toCanvas(canvasRef.current, value, {
       width: 220,
       margin: 2,
-      color: {
-        dark:  greyed ? '#a1a1aa' : '#18181b',   // dark modules
-        light: greyed ? '#3f3f46' : '#ffffff',    // white background when active
-      },
+      color: { dark: '#18181b', light: '#ffffff' },
     }).catch(console.error);
-  }, [value, greyed]);
+  }, [value, canvasRef]);
 
   return (
     <canvas
@@ -53,14 +52,32 @@ function QRCanvas({ value, greyed }: { value: string; greyed: boolean }) {
       className="rounded-xl border border-zinc-300 mx-auto block"
     />
   );
+};
+
+function downloadQR(canvasRef: React.RefObject<HTMLCanvasElement>, code: string) {
+  const canvas = canvasRef.current;
+  if (!canvas) return;
+  canvas.toBlob((blob) => {
+    if (!blob) { toast.error('Could not generate image'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `qr-pass-${code}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('QR pass downloaded!');
+  }, 'image/png');
 }
 
 // ─── Single registration card ─────────────────────────────────────────────────
 
 function RegistrationCard({ reg }: { reg: UserRegistration }) {
   const [expanded, setExpanded] = useState(false);
-  const isCheckedIn = reg.status === 'approved';
+  const isApproved  = reg.status === 'approved';
+  const isCheckedIn = reg.status === 'approved'; // kept for compatibility
+  const isPending   = reg.status === 'not_approved';
   const scanUrl     = `${APP_URL}/scan/${reg.unique_code}`;
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
@@ -72,13 +89,15 @@ function RegistrationCard({ reg }: { reg: UserRegistration }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="font-semibold text-zinc-100">{reg.event.name}</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
-              isCheckedIn
-                ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                : 'bg-violet-500/10 text-violet-400 border-violet-500/20'
-            }`}>
-              {isCheckedIn ? '✓ Checked in' : 'Registered'}
-            </span>
+            {isPending ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium border bg-yellow-500/10 text-yellow-400 border-yellow-500/20">
+                ⏳ Pending Approval
+              </span>
+            ) : (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium border bg-green-500/10 text-green-400 border-green-500/20">
+                ✓ Approved
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
             {reg.event.date && (
@@ -96,32 +115,48 @@ function RegistrationCard({ reg }: { reg: UserRegistration }) {
           </div>
         </div>
         <button className="ml-4 shrink-0 text-zinc-400 hover:text-violet-400 transition-colors p-1">
-          {isCheckedIn
-            ? <BadgeCheck className="w-5 h-5 text-green-400" />
+          {isPending
+            ? <Clock className="w-5 h-5 text-yellow-400" />
             : <QrCode className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* Expandable QR section */}
+      {/* Expandable section */}
       {expanded && (
         <div className="border-t border-zinc-800 p-6 text-center animate-fade-in">
-          {isCheckedIn ? (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-[200px] h-[200px] rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center mx-auto">
-                <div className="text-center">
-                  <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-2" />
-                  <p className="text-xs text-zinc-400">Entry used</p>
+          {isPending ? (
+            /* ── Pending state ── */
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-[200px] h-[200px] rounded-xl bg-zinc-800/60 border border-yellow-500/20 flex items-center justify-center mx-auto">
+                <div className="text-center px-4">
+                  <Clock className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
+                  <p className="text-sm font-medium text-zinc-200 mb-1">Awaiting Approval</p>
+                  <p className="text-xs text-zinc-500">The organiser will review and approve your registration.</p>
                 </div>
               </div>
-              <p className="text-xs text-zinc-500">This QR has already been scanned and is no longer valid.</p>
+              <p className="text-xs text-zinc-500 max-w-xs">
+                Your QR entry pass will appear here once the admin approves your registration.
+              </p>
+              <p className="text-xs text-zinc-600">
+                Code: <code className="text-yellow-500/70 font-mono">{reg.unique_code}</code>
+              </p>
             </div>
           ) : (
+            /* ── Approved — show QR ── */
             <div className="flex flex-col items-center gap-3">
-              <QRCanvas value={scanUrl} greyed={false} />
+              <QRCanvas value={scanUrl} canvasRef={qrCanvasRef} />
               <p className="text-xs text-zinc-500">Show this QR at the entrance</p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); downloadQR(qrCanvasRef, reg.unique_code); }}
+                className="gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" /> Download QR (PNG)
+              </Button>
+              <p className="text-xs text-zinc-600">Code: <code className="text-violet-400 font-mono">{reg.unique_code}</code></p>
             </div>
           )}
-          <p className="text-xs text-zinc-600 mt-3">Code: <code className="text-violet-400 font-mono">{reg.unique_code}</code></p>
         </div>
       )}
     </div>
@@ -209,7 +244,7 @@ export default function MyEventsPage() {
       <main className="max-w-2xl mx-auto px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-zinc-100">My Events</h1>
-          <p className="text-sm text-zinc-400 mt-1">Your event registrations and QR entry passes</p>
+        <p className="text-sm text-zinc-400 mt-1">Your event registrations and QR entry passes</p>
         </div>
 
         {isLoading ? (

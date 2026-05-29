@@ -1,15 +1,17 @@
 // apps/web/app/dashboard/events/[id]/page.tsx
-// Event detail: stats, copy link, live registrations table, CSV export.
+// Event detail: stats, copy link, live registrations table, CSV export, approval workflow.
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Users, CheckCircle2, Clock, BarChart3,
-  Link2, ExternalLink, Search, Download, RefreshCw, ScanLine, Users2
+  Link2, ExternalLink, Search, Download, RefreshCw, ScanLine, Users2,
+  UserCheck, CheckCheck, Square, CheckSquare,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -29,7 +31,10 @@ export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [statusFilter, setStatusFilter] = useState<'all' | 'not_approved' | 'approved'>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
   const isAdmin       = user?.role === 'admin';
   const isEventMember = (user as any)?.isEventMember === true;
 
@@ -51,11 +56,60 @@ export default function EventDetailPage() {
     refetchInterval: 30_000,
   });
 
+  // ── Approval mutations ──────────────────────────────────────────────────────
+
+  const approveMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (ids.length === 1) {
+        return api.patch(`/registrations/${ids[0]}/approve`);
+      }
+      return api.post('/registrations/bulk-approve', { ids });
+    },
+    onSuccess: (_data, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['registrations', id] });
+      queryClient.invalidateQueries({ queryKey: ['event', id] });
+      toast.success(ids.length === 1 ? 'Registration approved!' : `${ids.length} registrations approved!`);
+      setSelectedIds(new Set());
+    },
+    onError: () => toast.error('Failed to approve. Please try again.'),
+  });
+
+  const handleApprove = useCallback((ids: string[]) => {
+    approveMutation.mutate(ids);
+  }, [approveMutation]);
+
+  const toggleSelect = useCallback((regId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(regId) ? next.delete(regId) : next.add(regId);
+      return next;
+    });
+  }, []);
+
+  const pendingRegs = registrations?.filter((r) => r.status === 'not_approved') ?? [];
+
+  const toggleSelectAll = useCallback(() => {
+    const pendingFiltered = (statusFilter === 'approved')
+      ? []
+      : pendingRegs.filter((r) => {
+          const q = search.toLowerCase();
+          return !q || r.name.toLowerCase().includes(q) || r.surname.toLowerCase().includes(q)
+            || r.email.toLowerCase().includes(q) || r.city.toLowerCase().includes(q);
+        });
+    if (pendingFiltered.every((r) => selectedIds.has(r.id)) && pendingFiltered.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingFiltered.map((r) => r.id)));
+    }
+  }, [pendingRegs, selectedIds, search, statusFilter]);
+
   const formLink = event ? `${APP_URL}/e/${event.slug}` : '';
 
   const filtered = registrations?.filter((r) => {
+    if (statusFilter === 'not_approved' && r.status !== 'not_approved') return false;
+    if (statusFilter === 'approved'     && r.status !== 'approved')     return false;
     const q = search.toLowerCase();
-    return (
+    return !q || (
       r.name.toLowerCase().includes(q) ||
       r.surname.toLowerCase().includes(q) ||
       r.email.toLowerCase().includes(q) ||
@@ -66,8 +120,6 @@ export default function EventDetailPage() {
   function exportCSV() {
     if (!registrations?.length) return;
 
-    // Escape a single CSV field: wrap in quotes, double any internal quotes.
-    // Also strips leading =+-@ to prevent CSV formula injection attacks.
     const csvField = (v: string | null | undefined): string => {
       const s = String(v ?? '').replace(/^[=+\-@\t\r]/, "'$&");
       return `"${s.replace(/"/g, '""')}"`;
@@ -81,7 +133,7 @@ export default function EventDetailPage() {
       csvField(new Date(r.registered_at).toLocaleString()),
     ]);
     const csv = [headers.map(csvField), ...rows].map((row) => row.join(',')).join('\r\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }); // BOM for Excel
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -94,8 +146,13 @@ export default function EventDetailPage() {
     ? Math.round(((event.checkin_count) / Math.max(event.registration_count, 1)) * 100)
     : 0;
 
-  // Scanner role: can only scan, cannot see registrations or analytics
   const isScanner = event?.userEventRole === 'scanner';
+
+  const pendingCount  = registrations?.filter((r) => r.status === 'not_approved').length ?? 0;
+  const approvedCount = registrations?.filter((r) => r.status === 'approved').length ?? 0;
+  const selectedPendingIds = [...selectedIds].filter(
+    (sid) => registrations?.find((r) => r.id === sid)?.status === 'not_approved'
+  );
 
   if (eventLoading) {
     return (
@@ -148,7 +205,7 @@ export default function EventDetailPage() {
         }
       />
 
-      {/* Stats — hidden for scanner role */}
+      {/* Stats */}
       {!isScanner && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard label="Registered"  value={event.registration_count} icon={Users}          accentColor="default" />
@@ -169,7 +226,7 @@ export default function EventDetailPage() {
       </div>
       )}
 
-      {/* Scanner-only view — simple focused prompt */}
+      {/* Scanner-only view */}
       {isScanner && (
         <div className="flex flex-col items-center justify-center py-20 text-center gap-6">
           <div className="w-20 h-20 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
@@ -187,7 +244,7 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {/* Registration link — hidden for scanner */}
+      {/* Registration link */}
       {!isScanner && (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 mb-6">
         <p className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Registration link</p>
@@ -204,17 +261,59 @@ export default function EventDetailPage() {
       </div>
       )}
 
-      {/* Registrations table — hidden for scanner */}
+      {/* Registrations table */}
       {!isScanner && (
       <div>
+        {/* Toolbar */}
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-          <h2 className="text-lg font-semibold text-zinc-100">
-            Registrations
-            {registrations && (
-              <span className="ml-2 text-sm font-normal text-zinc-500">({registrations.length})</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-lg font-semibold text-zinc-100">
+              Registrations
+              {registrations && (
+                <span className="ml-2 text-sm font-normal text-zinc-500">({registrations.length})</span>
+              )}
+            </h2>
+            {/* Status filter pills */}
+            {registrations && registrations.length > 0 && (
+              <div className="flex items-center gap-1">
+                {(['all', 'not_approved', 'approved'] as const).map((f) => {
+                  const label = f === 'all' ? `All (${registrations.length})` : f === 'not_approved' ? `Pending (${pendingCount})` : `Approved (${approvedCount})`;
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => { setStatusFilter(f); setSelectedIds(new Set()); }}
+                      className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                        statusFilter === f
+                          ? f === 'not_approved' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                            : f === 'approved' ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                            : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                          : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             )}
-          </h2>
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Bulk approve button */}
+            {selectedPendingIds.length > 0 && (
+              <Button
+                size="sm"
+                className="bg-green-600 hover:bg-green-500 text-white"
+                onClick={() => handleApprove(selectedPendingIds)}
+                disabled={approveMutation.isPending}
+              >
+                {approveMutation.isPending ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCheck className="w-4 h-4" />
+                )}
+                Approve {selectedPendingIds.length} selected
+              </Button>
+            )}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
               <Input
@@ -233,14 +332,37 @@ export default function EventDetailPage() {
           </div>
         </div>
 
+        {/* Pending approval notice */}
+        {pendingCount > 0 && statusFilter !== 'approved' && (
+          <div className="flex items-center gap-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-3 mb-4">
+            <Clock className="w-4 h-4 text-yellow-400 shrink-0" />
+            <p className="text-xs text-yellow-300">
+              <span className="font-semibold">{pendingCount} registration{pendingCount !== 1 ? 's' : ''}</span> awaiting your approval.
+              Registrants will only see their QR pass after you approve.
+            </p>
+            {statusFilter === 'all' && pendingCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto shrink-0 h-7 text-xs text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10"
+                onClick={toggleSelectAll}
+              >
+                {selectedPendingIds.length === pendingRegs.length && pendingRegs.length > 0
+                  ? <><Square className="w-3 h-3" /> Deselect all</>
+                  : <><CheckSquare className="w-3 h-3" /> Select all pending</>}
+              </Button>
+            )}
+          </div>
+        )}
+
         {regsLoading ? (
           <div className="flex justify-center py-16"><Spinner size="lg" /></div>
         ) : !filtered?.length ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
             <p className="text-zinc-500 text-sm">
-              {search ? 'No registrations match your search.' : 'No registrations yet.'}
+              {search ? 'No registrations match your search.' : statusFilter !== 'all' ? `No ${statusFilter === 'not_approved' ? 'pending' : 'approved'} registrations.` : 'No registrations yet.'}
             </p>
-            {!search && (
+            {!search && statusFilter === 'all' && (
               <p className="text-zinc-600 text-xs mt-1">
                 Share the registration link above to start collecting sign-ups.
               </p>
@@ -248,30 +370,84 @@ export default function EventDetailPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {filtered.map((reg) => (
-              <div
-                key={reg.id}
-                className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-medium text-zinc-100 text-sm">{reg.email}</span>
-                      <StatusBadge status={reg.status} />
+            {filtered.map((reg) => {
+              const isPending  = reg.status === 'not_approved';
+              const isSelected = selectedIds.has(reg.id);
+              const isApproving = approveMutation.isPending && approveMutation.variables?.includes(reg.id);
+
+              return (
+                <div
+                  key={reg.id}
+                  className={`bg-zinc-900 border rounded-xl p-4 transition-colors ${
+                    isSelected
+                      ? 'border-violet-500/50 bg-violet-500/5'
+                      : 'border-zinc-800 hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Checkbox — only for pending */}
+                    {isPending ? (
+                      <button
+                        onClick={() => toggleSelect(reg.id)}
+                        className="mt-0.5 shrink-0 text-zinc-500 hover:text-violet-400 transition-colors"
+                        aria-label={isSelected ? 'Deselect' : 'Select'}
+                      >
+                        {isSelected
+                          ? <CheckSquare className="w-4 h-4 text-violet-400" />
+                          : <Square className="w-4 h-4" />}
+                      </button>
+                    ) : (
+                      <div className="mt-0.5 w-4 shrink-0" />
+                    )}
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="font-medium text-zinc-100 text-sm">
+                          {reg.name} {reg.surname}
+                        </span>
+                        <StatusBadge status={reg.status} />
+                      </div>
+                      <p className="text-xs text-zinc-500 mb-1">{reg.email}</p>
+                      <div className="flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
+                        <span>{reg.city}, {reg.state}</span>
+                        <span>·</span>
+                        <span>{reg.profession}</span>
+                        {reg.mobile && <><span>·</span><span>{reg.mobile}</span></>}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
-                      <span>{reg.city}, {reg.state}</span>
-                      <span>·</span>
-                      <span>{reg.profession}</span>
+
+                    {/* Right side: time + actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-xs text-zinc-500">{formatDateTime(reg.registered_at)}</p>
+                        <code className="text-[10px] text-zinc-600 font-mono">{reg.unique_code}</code>
+                      </div>
+                      {isPending && (
+                        <Button
+                          size="sm"
+                          className="h-8 bg-green-600 hover:bg-green-500 text-white text-xs"
+                          onClick={() => handleApprove([reg.id])}
+                          disabled={approveMutation.isPending}
+                        >
+                          {isApproving ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <UserCheck className="w-3 h-3" />
+                          )}
+                          Approve
+                        </Button>
+                      )}
+                      {!isPending && (
+                        <div className="w-8 h-8 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+                          <CheckCircle2 className="w-4 h-4 text-green-400" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs text-zinc-500">{formatDateTime(reg.registered_at)}</p>
-                    <code className="text-[10px] text-zinc-600 font-mono">{reg.unique_code}</code>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
