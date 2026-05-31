@@ -202,6 +202,11 @@ export default function RegistrationFormPage() {
   const watchedState = watch('state');
   const watchedCity  = watch('city');
 
+  // Pre-fill mobile once user loads (user is async, defaultValues run before user is ready)
+  useEffect(() => {
+    if (user?.mobile) setValue('mobile', user.mobile);
+  }, [user?.mobile, setValue]);
+
   // Fetch cities when state changes via countriesnow (free, no key)
   useEffect(() => {
     if (!watchedState) { setCities([]); return; }
