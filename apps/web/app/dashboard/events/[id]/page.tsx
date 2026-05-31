@@ -184,9 +184,9 @@ export default function EventDetailPage() {
       s === 'admin_approved' ? 'Approved' :
       s === 'approved'       ? 'Checked In' : s;
 
-    const headers = ['Name', 'Surname', 'Email', 'Mobile', 'City', 'State', 'Profession', 'Status', 'Referred By', 'Acknowledged', 'Acknowledged At', 'Registered At'];
+    const headers = ['Name', 'Surname', 'Mobile', 'City', 'State', 'Profession', 'Status', 'Referred By', 'Acknowledged', 'Acknowledged At', 'Registered At'];
     const rows = registrations.map((r) => [
-      csvField(r.name), csvField(r.surname), csvField(r.email), csvField(r.mobile),
+      csvField(r.name), csvField(r.surname), csvField(r.mobile),
       csvField(r.city), csvField(r.state), csvField(r.profession),
       csvField(statusLabel(r.status)),
       csvField(r.referred_by_name ?? ''),
@@ -574,7 +574,7 @@ export default function EventDetailPage() {
                         {reg.referred_by_name && (
                           <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border ${
                             reg.is_acknowledged
-                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                              ? 'bg-green-500/10 text-green-300 border-green-500/20'
                               : 'bg-orange-500/10 text-orange-300 border-orange-500/20'
                           }`}>
                             <Star className="w-2.5 h-2.5" />
@@ -618,8 +618,8 @@ export default function EventDetailPage() {
                           <CheckCircle2 className="w-4 h-4 text-green-400" />
                         </div>
                       )}
-                      {/* Acknowledge button — leader can ack their own referrals */}
-                      {isLeader && reg.referred_by_user_id === user?.id && !reg.is_acknowledged && (
+                      {/* Acknowledge button — visible to anyone who referred this person */}
+                      {reg.referred_by_user_id === user?.id && !reg.is_acknowledged && (
                         <Button
                           size="sm"
                           variant="ghost"

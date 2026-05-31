@@ -107,24 +107,35 @@ eventsRouter.get('/public/:slug/leaders', async (c) => {
 
   const { data: event } = await db
     .from('events')
-    .select('id')
+    .select('id, org_id')
     .eq('slug', slug)
     .maybeSingle();
 
   if (!event) return c.json([]);
 
+  // Event-level leaders
   const { data: leaders } = await db
     .from('event_members')
     .select('user_id, users(id, name)')
     .eq('event_id', event.id)
     .eq('role', 'leader');
 
-  return c.json(
-    (leaders ?? []).map((l) => ({
-      id:   (l.users as any)?.id   ?? l.user_id,
-      name: (l.users as any)?.name ?? 'Unknown',
-    }))
-  );
+  // Org-level admins and co-organizers for this event's org
+  const { data: orgAdmins } = await db
+    .from('org_members')
+    .select('user_id, users(id, name)')
+    .eq('org_id', event.org_id)
+    .in('role', ['admin', 'co_organizer']);
+
+  const combined = [
+    ...(leaders ?? []).map((l) => ({ id: (l.users as any)?.id ?? l.user_id, name: (l.users as any)?.name ?? 'Unknown' })),
+    ...(orgAdmins ?? []).map((m) => ({ id: (m.users as any)?.id ?? m.user_id, name: (m.users as any)?.name ?? 'Unknown' })),
+  ];
+  // Deduplicate by id
+  const seen = new Set<string>();
+  const referrers = combined.filter((p) => { if (seen.has(p.id)) return false; seen.add(p.id); return true; });
+
+  return c.json(referrers);
 });
 
 eventsRouter.use('*', authMiddleware);
