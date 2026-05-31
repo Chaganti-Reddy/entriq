@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Building2, LogOut, ShieldCheck, Settings } from 'lucide-react';
+import { LayoutDashboard, Building2, LogOut, ShieldCheck, Settings, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSuperAdminStore } from '@/stores/superAdminAuth';
 import axios from 'axios';
@@ -12,6 +12,7 @@ import axios from 'axios';
 const navItems = [
   { label: 'Overview',      href: '/super-admin',          icon: LayoutDashboard },
   { label: 'Organisations', href: '/super-admin/orgs',     icon: Building2 },
+  { label: 'Users',         href: '/super-admin/users',    icon: Users },
   { label: 'Settings',      href: '/super-admin/settings', icon: Settings },
 ];
 

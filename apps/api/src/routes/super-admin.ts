@@ -206,7 +206,68 @@ superAdminRouter.delete('/orgs/:id', async (c) => {
   return c.json({ ok: true });
 });
 
-// PATCH /super-admin/password — change super admin password via Supabase Auth
+// GET /super-admin/users — list all registered user accounts
+superAdminRouter.get('/users', async (c) => {
+  const search = c.req.query('search') ?? '';
+  const page   = Math.max(1, parseInt(c.req.query('page') ?? '1'));
+  const limit  = 50;
+  const offset = (page - 1) * limit;
+
+  let query = db
+    .from('users')
+    .select('id, name, mobile, email, mobile_verified, created_at', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,mobile.ilike.%${search}%,email.ilike.%${search}%`);
+  }
+
+  const { data, error, count } = await query;
+  if (error) return c.json({ error: 'Failed to fetch users' }, 500);
+  return c.json({ users: data ?? [], total: count ?? 0, page, limit });
+});
+
+// DELETE /super-admin/users/:id — delete a user account and all their data
+superAdminRouter.delete('/users/:id', async (c) => {
+  const { id } = c.req.param();
+
+  const { data: user } = await db.from('users').select('id, name').eq('id', id).maybeSingle();
+  if (!user) return c.json({ error: 'User not found' }, 404);
+
+  // Remove from event_members, org_members, registrations (checkins cascade), then user
+  await db.from('event_members').delete().eq('user_id', id);
+  await db.from('org_members').delete().eq('user_id', id);
+  // Get registration IDs to delete checkins first
+  const { data: regs } = await db.from('registrations').select('id').eq('user_id', id);
+  const regIds = (regs ?? []).map((r) => r.id);
+  if (regIds.length > 0) {
+    await db.from('checkins').delete().in('registration_id', regIds);
+    await db.from('registrations').delete().in('id', regIds);
+  }
+  const { error } = await db.from('users').delete().eq('id', id);
+  if (error) return c.json({ error: 'Failed to delete user' }, 500);
+
+  return c.json({ ok: true });
+});
+
+// DELETE /super-admin/events/:id — delete a single event and all its data
+superAdminRouter.delete('/events/:id', async (c) => {
+  const { id } = c.req.param();
+
+  const { data: event } = await db.from('events').select('id, name').eq('id', id).maybeSingle();
+  if (!event) return c.json({ error: 'Event not found' }, 404);
+
+  await db.from('checkins').delete().eq('event_id', id);
+  await db.from('registrations').delete().eq('event_id', id);
+  await db.from('event_members').delete().eq('event_id', id);
+  const { error } = await db.from('events').delete().eq('id', id);
+  if (error) return c.json({ error: 'Failed to delete event' }, 500);
+
+  return c.json({ ok: true });
+});
+
+
 superAdminRouter.patch(
   '/password',
   zValidator('json', z.object({

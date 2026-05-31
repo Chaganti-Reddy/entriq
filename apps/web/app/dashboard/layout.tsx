@@ -121,21 +121,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Member info + role badge + Logout */}
         <div className="px-3 py-4 border-t border-zinc-800 space-y-2">
           <div className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-zinc-500">Organisation</p>
+            <div className="flex items-center justify-between mb-0.5">
+              <p className="text-xs text-zinc-500">
+                {isEventMember ? 'Event access via' : 'Organisation'}
+              </p>
               <span className={cn(
-                'text-[10px] px-2 py-0.5 rounded-full font-medium',
-                isAdmin
+                'text-[10px] px-2 py-0.5 rounded-full font-medium capitalize',
+                user.role === 'admin'
                   ? 'bg-violet-500/15 text-violet-400 border border-violet-500/20'
-                  : isEventMember
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-                    : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                  : user.role === 'co_organizer'
+                    ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                    : user.role === 'leader'
+                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
+                      : user.role === 'scanner'
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-zinc-700/40 text-zinc-400 border border-zinc-700'
               )}>
-                {isAdmin ? 'Admin' : isEventMember ? 'Event Member' : 'Co-organizer'}
+                {user.role === 'co_organizer' ? 'Co-org' : (user.role ?? 'Member')}
               </span>
             </div>
-              <p className="text-sm font-medium text-zinc-100 truncate mt-0.5">{user.orgName}</p>
-              <p className="text-xs text-zinc-500 truncate">{user.mobile ? `+91 ${user.mobile}` : (user.email ?? '')}</p>
+            <p className="text-sm font-medium text-zinc-100 truncate">{user.orgName ?? '—'}</p>
+            <p className="text-xs text-zinc-500 truncate">{user.mobile ? `+91 ${user.mobile}` : (user.email ?? '')}</p>
           </div>
           <button
             onClick={handleLogout}

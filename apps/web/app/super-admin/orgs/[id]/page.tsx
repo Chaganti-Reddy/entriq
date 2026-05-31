@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -45,13 +45,25 @@ const statusBadge: Record<OrgStatus, { label: string; cls: string }> = {
   suspended: { label: 'Suspended', cls: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
 };
 
-function EventRow({ ev }: { ev: OrgDetail['events'][number] }) {
+function EventRow({ ev, onDeleted }: { ev: OrgDetail['events'][number]; onDeleted: (id: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const qc = useQueryClient();
   const { data: registrants, isFetching } = useQuery<Registrant[]>({
     queryKey: ['sa-event-regs', ev.id],
     queryFn:  async () => { const { data } = await saApi.get(`/super-admin/events/${ev.id}/registrations`); return data; },
     enabled:  open,
     staleTime: 30_000,
+  });
+
+  const deleteEventMutation = useMutation({
+    mutationFn: () => saApi.delete(`/super-admin/events/${ev.id}`),
+    onSuccess: () => {
+      toast.success(`Event "${ev.name}" deleted.`);
+      qc.invalidateQueries({ queryKey: ['sa-stats'] });
+      onDeleted(ev.id);
+    },
+    onError: () => toast.error('Failed to delete event.'),
   });
 
   return (
@@ -79,8 +91,24 @@ function EventRow({ ev }: { ev: OrgDetail['events'][number] }) {
           <div className="text-sm font-semibold text-zinc-200">{ev.registration_count}</div>
           <div className="text-[10px] text-zinc-500">registered</div>
           <div className="text-[10px] text-green-400">{ev.checkin_count} checked in</div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setDeleteConfirm(true); }}
+            className="mt-2 text-zinc-600 hover:text-red-400 transition-colors"
+            title="Delete event"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </button>
+      <ConfirmDialog
+        open={deleteConfirm}
+        title={`Delete "${ev.name}"?`}
+        description={`This will permanently delete the event and all ${ev.registration_count} registrations. Cannot be undone.`}
+        confirmLabel="Delete Event"
+        loading={deleteEventMutation.isPending}
+        onConfirm={() => deleteEventMutation.mutate()}
+        onCancel={() => setDeleteConfirm(false)}
+      />
       {open && (
         <div className="bg-zinc-950/60 border-t border-zinc-800/50 px-4 py-3">
           {isFetching ? (
@@ -132,11 +160,16 @@ export default function OrgDetailPage() {
   const [rejectReason, setRejectReason]       = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [deleteConfirm, setDeleteConfirm]     = useState(false);
+  const [localEvents, setLocalEvents]         = useState<OrgDetail['events'] | null>(null);
 
   const { data, isLoading } = useQuery<OrgDetail>({
     queryKey: ['sa-org', id],
     queryFn:  async () => { const { data } = await saApi.get(`/super-admin/orgs/${id}`); return data; },
   });
+
+  useEffect(() => {
+    if (data?.events) setLocalEvents(data.events);
+  }, [data?.events]);
 
   const statusMutation = useMutation({
     mutationFn: ({ status, reason }: { status: OrgStatus; reason?: string }) =>
@@ -165,7 +198,8 @@ export default function OrgDetailPage() {
   if (isLoading) return <div className="flex justify-center py-16"><Spinner /></div>;
   if (!data)     return <div className="py-16 text-center text-zinc-500">Organisation not found.</div>;
 
-  const { org, members, events, registration_count } = data;
+  const { org, members, registration_count } = data;
+  const events = localEvents ?? data.events;
   const badge = statusBadge[org.status];
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' },
@@ -315,7 +349,7 @@ export default function OrgDetailPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
           {events.length === 0
             ? <p className="text-zinc-600 text-sm px-4 py-8 text-center">No events created yet.</p>
-            : events.map((ev) => <EventRow key={ev.id} ev={ev} />)}
+            : events.map((ev) => <EventRow key={ev.id} ev={ev} onDeleted={(deletedId) => setLocalEvents((prev) => (prev ?? data.events).filter((e) => e.id !== deletedId))} />)}
         </div>
       )}
 
