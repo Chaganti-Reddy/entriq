@@ -1,12 +1,20 @@
 // apps/web/app/layout.tsx
 // Root layout: fonts, metadata, global styles, providers.
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { Providers } from './providers';
 import { ErrorBoundary } from '@/components/error-boundary';
 import './globals.css';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#09090b',
+};
 
 export const metadata: Metadata = {
   title: {
