@@ -159,7 +159,7 @@ export default function EventTeamPage() {
   }
 
   function handleAssign() {
-    if (lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.otherOrg && !lookup.isSelf && !lookup.isOrgAdmin) {
+    if (lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.isSelf && !lookup.isOrgAdmin) {
       assignMutation.mutate({ phone, role });
     }
   }
@@ -297,14 +297,6 @@ export default function EventTeamPage() {
             </div>
           )}
 
-          {/* Other org */}
-          {lookup?.otherOrg && (
-            <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
-              <p className="text-sm text-red-300">&#9888; This user belongs to another organisation.</p>
-              <Button variant="ghost" size="sm" className="mt-3" onClick={closePanel}>Close</Button>
-            </div>
-          )}
-
           {/* Not found */}
           {lookup && !lookup.found && (
             <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4">
@@ -314,7 +306,7 @@ export default function EventTeamPage() {
           )}
 
           {/* Existing user — assign directly */}
-          {lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.otherOrg && !lookup.isSelf && !lookup.isOrgAdmin && (
+          {lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.isSelf && !lookup.isOrgAdmin && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 bg-green-500/5 border border-green-500/20 rounded-xl p-4">
                 <UserCheck className="w-5 h-5 text-green-400 shrink-0" />

@@ -127,6 +127,13 @@ export default function EventDetailPage() {
   const formLink = event ? `${APP_URL}/e/${event.slug}` : '';
 
   const filtered = registrations?.filter((r) => {
+    if (isLeader) {
+      // Leader view: filter only among referrals of this leader
+      if (statusFilter === 'not_acknowledged') return r.referred_by_user_id === user?.id && !r.is_acknowledged;
+      if (statusFilter === 'not_approved')     return r.referred_by_user_id === user?.id && r.is_acknowledged;
+      // 'all' for leader = all their referred registrations
+      return r.referred_by_user_id === user?.id;
+    }
     if (referredByMeOnly) {
       if (r.referred_by_user_id !== user?.id) return false;
     } else {
@@ -147,8 +154,10 @@ export default function EventDetailPage() {
   });
 
   // Counts for filter pills
-  const notAcknowledgedCount = registrations?.filter((r) => r.referred_by_user_id && !r.is_acknowledged).length ?? 0;
-  const referredByMeCount    = registrations?.filter((r) => r.referred_by_user_id === user?.id).length ?? 0;
+  const notAcknowledgedByMeCount = registrations?.filter((r) => r.referred_by_user_id === user?.id && !r.is_acknowledged).length ?? 0;
+  const acknowledgedByMeCount    = registrations?.filter((r) => r.referred_by_user_id === user?.id && r.is_acknowledged).length ?? 0;
+  const notAcknowledgedCount     = registrations?.filter((r) => r.referred_by_user_id && !r.is_acknowledged).length ?? 0;
+  const referredByMeCount        = registrations?.filter((r) => r.referred_by_user_id === user?.id).length ?? 0;
 
   const toggleSelectAll = useCallback(() => {
     const visible = (filtered ?? []);
@@ -325,57 +334,86 @@ export default function EventDetailPage() {
             {/* Status filter pills */}
             {registrations && registrations.length > 0 && (
               <div className="flex items-center gap-1 flex-wrap">
-                {!referredByMeOnly && (['all', 'not_approved', 'admin_approved', 'approved'] as const).map((f) => {
-                  // "All" count excludes unacknowledged referred registrations
-                  const mainCount = (registrations?.filter((r) => !r.referred_by_user_id || r.is_acknowledged).length) ?? 0;
-                  const label =
-                    f === 'all'           ? `Main (${mainCount})` :
-                    f === 'not_approved'  ? `Pending (${pendingCount})` :
-                    f === 'admin_approved'? `Approved (${adminApprovedCount})` :
-                                           `Checked In (${checkedInCount})`;
-                  return (
-                    <button
-                      key={f}
-                      onClick={() => { setStatusFilter(f); setSelectedIds(new Set()); }}
-                      className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
-                        statusFilter === f
-                          ? f === 'not_approved'  ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                            : f === 'admin_approved' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                            : f === 'approved' ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                            : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
-                          : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-                {/* Not acknowledged filter — only if there are any unacknowledged */}
-                {notAcknowledgedCount > 0 && !referredByMeOnly && (
-                  <button
-                    onClick={() => { setStatusFilter('not_acknowledged'); setSelectedIds(new Set()); }}
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
-                      statusFilter === 'not_acknowledged'
-                        ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
-                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
-                    }`}
-                  >
-                    Not Acknowledged ({notAcknowledgedCount})
-                  </button>
-                )}
-                {/* Referred by me — visible to leaders */}
-                {isLeader && referredByMeCount > 0 && (
-                  <button
-                    onClick={() => { setReferredByMeOnly((v) => !v); setStatusFilter('all'); setSelectedIds(new Set()); }}
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors flex items-center gap-1 ${
-                      referredByMeOnly
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
-                    }`}
-                  >
-                    <Star className="w-3 h-3" />
-                    Referred by me ({referredByMeCount})
-                  </button>
+                {isLeader ? (
+                  /* Leader tabs: All Referred | Not Acknowledged | Acknowledged */
+                  <>
+                    {(['all', 'not_acknowledged', 'not_approved'] as const).map((f) => {
+                      const label =
+                        f === 'all'              ? `All Referred (${referredByMeCount})` :
+                        f === 'not_acknowledged' ? `Not Acknowledged (${notAcknowledgedByMeCount})` :
+                                                   `Acknowledged (${acknowledgedByMeCount})`;
+                      const activeColor =
+                        f === 'not_acknowledged' ? 'bg-orange-500/20 text-orange-300 border-orange-500/30' :
+                        f === 'not_approved'     ? 'bg-green-500/20 text-green-300 border-green-500/30' :
+                                                   'bg-violet-500/20 text-violet-300 border-violet-500/30';
+                      return (
+                        <button
+                          key={f}
+                          onClick={() => { setStatusFilter(f); setSelectedIds(new Set()); }}
+                          className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors border ${
+                            statusFilter === f ? activeColor : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </>
+                ) : (
+                  /* Admin tabs */
+                  <>
+                    {!referredByMeOnly && (['all', 'not_approved', 'admin_approved', 'approved'] as const).map((f) => {
+                      const mainCount = (registrations?.filter((r) => !r.referred_by_user_id || r.is_acknowledged).length) ?? 0;
+                      const label =
+                        f === 'all'           ? `Main (${mainCount})` :
+                        f === 'not_approved'  ? `Pending (${pendingCount})` :
+                        f === 'admin_approved'? `Approved (${adminApprovedCount})` :
+                                               `Checked In (${checkedInCount})`;
+                      return (
+                        <button
+                          key={f}
+                          onClick={() => { setStatusFilter(f); setSelectedIds(new Set()); }}
+                          className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                            statusFilter === f
+                              ? f === 'not_approved'   ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                                : f === 'admin_approved' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                : f === 'approved'       ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                                : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                              : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    {/* Not acknowledged filter — only if there are any unacknowledged */}
+                    {notAcknowledgedCount > 0 && !referredByMeOnly && (
+                      <button
+                        onClick={() => { setStatusFilter('not_acknowledged'); setSelectedIds(new Set()); }}
+                        className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                          statusFilter === 'not_acknowledged'
+                            ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+                            : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
+                        }`}
+                      >
+                        Not Acknowledged ({notAcknowledgedCount})
+                      </button>
+                    )}
+                    {/* Referred by me */}
+                    {referredByMeCount > 0 && (
+                      <button
+                        onClick={() => { setReferredByMeOnly((v) => !v); setStatusFilter('all'); setSelectedIds(new Set()); }}
+                        className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors flex items-center gap-1 ${
+                          referredByMeOnly
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
+                        }`}
+                      >
+                        <Star className="w-3 h-3" />
+                        Referred by me ({referredByMeCount})
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -431,8 +469,8 @@ export default function EventDetailPage() {
           </div>
         </div>
 
-        {/* Pending approval notice */}
-        {pendingCount > 0 && statusFilter !== 'admin_approved' && statusFilter !== 'approved' && (
+        {/* Pending approval notice — admin only */}
+        {!isLeader && pendingCount > 0 && statusFilter !== 'admin_approved' && statusFilter !== 'approved' && (
           <div className="flex items-center gap-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-3 mb-4">
             <Clock className="w-4 h-4 text-yellow-400 shrink-0" />
             <p className="text-xs text-yellow-300">

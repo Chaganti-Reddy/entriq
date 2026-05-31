@@ -97,11 +97,6 @@ eventMembersRouter.get('/lookup', requireRole('admin'), async (c) => {
     return c.json({ found: true, isOrgAdmin: true, name: existingUser.name });
   }
 
-  // Is user an org member of a DIFFERENT org?
-  if (orgMembership && orgMembership.org_id !== user.orgId) {
-    return c.json({ found: true, otherOrg: true });
-  }
-
   // Already assigned to this event?
   const { data: eventMembership } = await db
     .from('event_members')
@@ -152,12 +147,6 @@ eventMembersRouter.post('/', requireRole('admin'), zValidator('json', assignSche
   if (targetOrgMember && ['admin', 'co_organizer'].includes(targetOrgMember.role)) {
     return c.json({ error: 'This user is already an org-level admin or co-organizer with full access.' }, 400);
   }
-  const { data: orgMembership } = await db
-    .from('org_members').select('id, org_id').eq('user_id', targetUser.id).maybeSingle();
-  if (orgMembership && orgMembership.org_id !== user.orgId) {
-    return c.json({ error: 'This user belongs to another organisation' }, 409);
-  }
-
   // Get inviter org_member id for audit trail
   const { data: inviterMembership } = await db
     .from('org_members').select('id').eq('user_id', user.sub).maybeSingle();
