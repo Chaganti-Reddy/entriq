@@ -37,7 +37,7 @@ registrationsRouter.post('/:eventSlug', registrationLimiter, authMiddleware, zVa
   // Look up event by slug
   const { data: event } = await db
     .from('events')
-    .select('id, name, is_active')
+    .select('id, name, org_id, is_active')
     .eq('slug', eventSlug)
     .maybeSingle();
 
@@ -56,9 +56,10 @@ registrationsRouter.post('/:eventSlug', registrationLimiter, authMiddleware, zVa
     return c.json({ error: 'You are already registered for this event', alreadyRegistered: true, uniqueCode: duplicate.unique_code }, 409);
   }
 
-  // Validate referredByUserId — must be a leader assigned to this event
+  // Validate referredByUserId — must be a leader (event_members) OR org admin/co-organizer
   let referredByName: string | null = null;
   if (body.referredByUserId) {
+    // Check event-level leader first
     const { data: leaderAssignment } = await db
       .from('event_members')
       .select('user_id, users(name)')
@@ -67,10 +68,23 @@ registrationsRouter.post('/:eventSlug', registrationLimiter, authMiddleware, zVa
       .eq('role', 'leader')
       .maybeSingle();
 
-    if (!leaderAssignment) {
-      return c.json({ error: 'Invalid referrer — user is not a leader for this event' }, 400);
+    if (leaderAssignment) {
+      referredByName = (leaderAssignment.users as any)?.name ?? null;
+    } else {
+      // Check org-level admin or co-organizer
+      const { data: orgMember } = await db
+        .from('org_members')
+        .select('user_id, users(name)')
+        .eq('org_id', event.org_id)
+        .eq('user_id', body.referredByUserId)
+        .in('role', ['admin', 'co_organizer'])
+        .maybeSingle();
+
+      if (!orgMember) {
+        return c.json({ error: 'Invalid referrer — user is not authorised to refer for this event' }, 400);
+      }
+      referredByName = (orgMember.users as any)?.name ?? null;
     }
-    referredByName = (leaderAssignment.users as any)?.name ?? null;
   }
 
   const uniqueCode = generateUniqueCode();
