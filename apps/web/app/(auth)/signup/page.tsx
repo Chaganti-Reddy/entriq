@@ -2,6 +2,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -42,8 +43,8 @@ type ParticipantForm = z.infer<typeof participantSchema>;
 type OrgForm = z.infer<typeof orgSchema>;
 
 /** Reusable phone input with +91 prefix */
-function PhoneInput({ id, error, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { error?: boolean }) {
-  return (
+const PhoneInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { error?: boolean }>(
+  ({ id, error, ...props }, ref) => (
     <div className="flex">
       <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-zinc-700 bg-zinc-800 text-zinc-400 text-sm select-none">
         +91
@@ -57,11 +58,13 @@ function PhoneInput({ id, error, ...props }: React.InputHTMLAttributes<HTMLInput
         placeholder="98765 43210"
         error={error}
         autoComplete="tel-national"
+        ref={ref}
         {...props}
       />
     </div>
-  );
-}
+  )
+);
+PhoneInput.displayName = 'PhoneInput';
 
 /** OTP entry step — shared for participant and org */
 function OtpStep({

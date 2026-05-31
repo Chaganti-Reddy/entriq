@@ -32,3 +32,6 @@ CREATE INDEX IF NOT EXISTS idx_users_mobile ON users (mobile);
 
 -- 6. Make registrations.email nullable (phone-only users have no email)
 ALTER TABLE registrations ALTER COLUMN email DROP NOT NULL;
+
+-- 7. Add password_hash to super_admins (for bcrypt-based login)
+ALTER TABLE super_admins ADD COLUMN IF NOT EXISTS password_hash TEXT;
