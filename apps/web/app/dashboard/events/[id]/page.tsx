@@ -126,6 +126,9 @@ export default function EventDetailPage() {
 
   const formLink = event ? `${APP_URL}/e/${event.slug}` : '';
 
+  const isScanner = event?.userEventRole === 'scanner';
+  const isLeader  = (user?.role as string) === 'leader' || event?.userEventRole === 'leader';
+
   const filtered = registrations?.filter((r) => {
     if (isLeader) {
       // Leader view: filter only among referrals of this leader
@@ -201,9 +204,6 @@ export default function EventDetailPage() {
   const checkinRate = liveRegisteredCount > 0
     ? Math.round((liveCheckedInCount / liveRegisteredCount) * 100)
     : 0;
-
-  const isScanner  = event?.userEventRole === 'scanner';
-  const isLeader   = (user?.role as string) === 'leader' || event?.userEventRole === 'leader';
 
   const pendingCount       = registrations?.filter((r) => r.status === 'not_approved').length ?? 0;
   const adminApprovedCount = registrations?.filter((r) => r.status === 'admin_approved').length ?? 0;
