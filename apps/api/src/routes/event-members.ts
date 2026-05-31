@@ -86,10 +86,18 @@ eventMembersRouter.get('/lookup', requireRole('admin'), async (c) => {
   if (!existingUser) return c.json({ found: false });
   if (!existingUser.mobile_verified) return c.json({ found: true, unverified: true });
 
-  // Is user an org member of a DIFFERENT org?
-  const { data: orgMembership } = await db
-    .from('org_members').select('id, org_id').eq('user_id', existingUser.id).maybeSingle();
+  // Cannot assign yourself
+  if (existingUser.id === user.sub) return c.json({ found: true, isSelf: true });
 
+  // Is user an org-level admin/co-organizer of THIS org? Already has full access
+  const { data: orgMembership } = await db
+    .from('org_members').select('id, org_id, role').eq('user_id', existingUser.id).maybeSingle();
+
+  if (orgMembership && orgMembership.org_id === user.orgId && ['admin', 'co_organizer'].includes(orgMembership.role)) {
+    return c.json({ found: true, isOrgAdmin: true, name: existingUser.name });
+  }
+
+  // Is user an org member of a DIFFERENT org?
   if (orgMembership && orgMembership.org_id !== user.orgId) {
     return c.json({ found: true, otherOrg: true });
   }
@@ -133,7 +141,17 @@ eventMembersRouter.post('/', requireRole('admin'), zValidator('json', assignSche
     return c.json({ error: 'This user has not verified their phone number yet.' }, 400);
   }
 
-  // Check if already an org member of a DIFFERENT org — cannot assign
+  // Cannot assign yourself
+  if (targetUser.id === user.sub) {
+    return c.json({ error: 'You cannot assign yourself — as org admin you already have full access.' }, 400);
+  }
+
+  // Org admins/co-organizers already have org-wide access — no need for event-level assignment
+  const { data: targetOrgMember } = await db
+    .from('org_members').select('id, role').eq('user_id', targetUser.id).eq('org_id', user.orgId!).maybeSingle();
+  if (targetOrgMember && ['admin', 'co_organizer'].includes(targetOrgMember.role)) {
+    return c.json({ error: 'This user is already an org-level admin or co-organizer with full access.' }, 400);
+  }
   const { data: orgMembership } = await db
     .from('org_members').select('id, org_id').eq('user_id', targetUser.id).maybeSingle();
   if (orgMembership && orgMembership.org_id !== user.orgId) {

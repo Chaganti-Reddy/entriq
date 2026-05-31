@@ -196,7 +196,7 @@ export default function RegistrationFormPage() {
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { state: '', city: '' },
+    defaultValues: { state: '', city: '', mobile: user?.mobile ?? '' },
   });
 
   const watchedState = watch('state');
@@ -391,26 +391,45 @@ export default function RegistrationFormPage() {
 
             {/* Mobile */}
             <div>
-              <Label htmlFor="mobile">Mobile number * <span className="text-zinc-600 font-normal">(10 digits, India)</span></Label>
-              <div className="mt-1.5 flex">
-                <span className="flex items-center px-3 bg-zinc-800 border border-r-0 border-zinc-700 rounded-l-xl text-sm text-zinc-400">
-                  +91
-                </span>
-                <Input
-                  id="mobile"
-                  type="tel"
-                  className="rounded-l-none"
-                  placeholder="98765 43210"
-                  maxLength={10}
-                  error={!!errors.mobile}
-                  autoComplete="tel"
-                  {...register('mobile', {
-                    onChange: (e) => {
-                      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10);
-                    },
-                  })}
-                />
-              </div>
+              <Label htmlFor="mobile">Mobile number *</Label>
+              {user?.mobile ? (
+                /* Pre-filled from verified account — read-only */
+                <div className="mt-1.5 flex">
+                  <span className="flex items-center px-3 bg-zinc-800 border border-r-0 border-zinc-700 rounded-l-xl text-sm text-zinc-400">
+                    +91
+                  </span>
+                  <Input
+                    id="mobile"
+                    type="tel"
+                    className="rounded-l-none bg-zinc-800/50 text-zinc-400 cursor-not-allowed"
+                    readOnly
+                    {...register('mobile')}
+                  />
+                  <span className="flex items-center px-3 bg-zinc-800 border border-l-0 border-zinc-700 rounded-r-xl text-xs text-emerald-400">
+                    ✓ verified
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-1.5 flex">
+                  <span className="flex items-center px-3 bg-zinc-800 border border-r-0 border-zinc-700 rounded-l-xl text-sm text-zinc-400">
+                    +91
+                  </span>
+                  <Input
+                    id="mobile"
+                    type="tel"
+                    className="rounded-l-none"
+                    placeholder="98765 43210"
+                    maxLength={10}
+                    error={!!errors.mobile}
+                    autoComplete="tel"
+                    {...register('mobile', {
+                      onChange: (e) => {
+                        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      },
+                    })}
+                  />
+                </div>
+              )}
               {errors.mobile && <p className="text-xs text-red-400 mt-1">{errors.mobile.message}</p>}
             </div>
 

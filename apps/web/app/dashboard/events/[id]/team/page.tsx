@@ -39,6 +39,8 @@ interface LookupResult {
   alreadyAssigned?: boolean;
   otherOrg?: boolean;
   inOurOrg?: boolean;
+  isSelf?: boolean;
+  isOrgAdmin?: boolean;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -157,7 +159,7 @@ export default function EventTeamPage() {
   }
 
   function handleAssign() {
-    if (lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.otherOrg) {
+    if (lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.otherOrg && !lookup.isSelf && !lookup.isOrgAdmin) {
       assignMutation.mutate({ phone, role });
     }
   }
@@ -263,6 +265,22 @@ export default function EventTeamPage() {
             </div>
           )}
 
+          {/* Self-assignment blocked */}
+          {lookup?.isSelf && (
+            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
+              <p className="text-sm text-yellow-300">⚠️ That's you! As org admin you already have full access to all events.</p>
+              <Button variant="ghost" size="sm" className="mt-3" onClick={closePanel}>Close</Button>
+            </div>
+          )}
+
+          {/* Org-level admin already has access */}
+          {lookup?.isOrgAdmin && (
+            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
+              <p className="text-sm text-yellow-300">⚠️ <strong>{lookup.name}</strong> is already an org-level admin or co-organizer with full access to all events.</p>
+              <Button variant="ghost" size="sm" className="mt-3" onClick={closePanel}>Close</Button>
+            </div>
+          )}
+
           {/* Already assigned */}
           {lookup?.alreadyAssigned && (
             <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
@@ -296,7 +314,7 @@ export default function EventTeamPage() {
           )}
 
           {/* Existing user — assign directly */}
-          {lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.otherOrg && (
+          {lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.otherOrg && !lookup.isSelf && !lookup.isOrgAdmin && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 bg-green-500/5 border border-green-500/20 rounded-xl p-4">
                 <UserCheck className="w-5 h-5 text-green-400 shrink-0" />
