@@ -62,7 +62,31 @@ eventsRouter.get('/public/:slug', async (c) => {
   return c.json(event);
 });
 
-// ── PROTECTED routes — auth middleware applies to everything below ────────────
+// GET /events/public/:slug/leaders — list leaders assigned to this event (no auth, for registration form)
+eventsRouter.get('/public/:slug/leaders', async (c) => {
+  const { slug } = c.req.param();
+
+  const { data: event } = await db
+    .from('events')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle();
+
+  if (!event) return c.json([]);
+
+  const { data: leaders } = await db
+    .from('event_members')
+    .select('user_id, users(id, name)')
+    .eq('event_id', event.id)
+    .eq('role', 'leader');
+
+  return c.json(
+    (leaders ?? []).map((l) => ({
+      id:   (l.users as any)?.id   ?? l.user_id,
+      name: (l.users as any)?.name ?? 'Unknown',
+    }))
+  );
+});
 
 eventsRouter.use('*', authMiddleware);
 // GET routes: both admin + co_organizer can read
@@ -72,13 +96,13 @@ eventsRouter.use('*', authMiddleware);
 // Admin: all events.
 // Org co-organizer (has memberId, not isEventMember): all events — org membership grants full access.
 // Event-only member (isEventMember): only events they're assigned to via event_members.
-eventsRouter.get('/', requireRole('co_organizer', 'admin'), async (c) => {
+eventsRouter.get('/', requireRole('co_organizer', 'admin', 'leader'), async (c) => {
   const user = c.get('user');
 
   let eventIds: string[] | null = null;
 
   // Only filter by event_members for event-only users (no org_members row)
-  if (user.role === 'co_organizer' && user.isEventMember) {
+  if ((user.role === 'co_organizer' || user.role === 'leader') && user.isEventMember) {
     const { data: assignments } = await db
       .from('event_members')
       .select('event_id')
@@ -169,7 +193,7 @@ eventsRouter.post('/', requireRole('admin'), zValidator('json', createEventSchem
 
 // GET /events/:id — get single event with counts
 // Co-organizers: must be assigned in event_members.
-eventsRouter.get('/:id', requireRole('co_organizer', 'admin'), requireEventAccess, async (c) => {
+eventsRouter.get('/:id', requireRole('co_organizer', 'admin', 'leader'), requireEventAccess, async (c) => {
   const user = c.get('user');
   const { id } = c.req.param();
 
@@ -193,17 +217,16 @@ eventsRouter.get('/:id', requireRole('co_organizer', 'admin'), requireEventAcces
   ]);
 
   // userEventRole: only relevant for event-only members (isEventMember).
-  // Org members (admin or co_organizer via org_members) always get full access regardless
-  // of any event_members row they might also have — org membership takes precedence.
-  let userEventRole: 'co_organizer' | 'scanner' | null = null;
-  if (user.isEventMember && user.role === 'co_organizer') {
+  // Org members (admin or co_organizer via org_members) always get full access.
+  let userEventRole: 'co_organizer' | 'scanner' | 'leader' | null = null;
+  if (user.isEventMember) {
     const { data: em } = await db
       .from('event_members')
       .select('role')
       .eq('event_id', id)
       .eq('user_id', user.sub)
       .maybeSingle();
-    userEventRole = (em?.role as 'co_organizer' | 'scanner') ?? 'co_organizer';
+    userEventRole = (em?.role as 'co_organizer' | 'scanner' | 'leader') ?? null;
   }
 
   const { admin_password: _, ...safeEvent } = event;

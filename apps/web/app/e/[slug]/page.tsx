@@ -1,14 +1,14 @@
 // apps/web/app/e/[slug]/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Gem, Calendar, MapPin, Loader2, LogIn, CheckCircle2, ChevronDown } from 'lucide-react';
+import { Gem, Calendar, MapPin, Loader2, LogIn, CheckCircle2, ChevronDown, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -50,6 +50,88 @@ interface EventPublic {
   id: string; name: string; date: string | null; location: string | null; is_active: boolean;
 }
 
+interface Leader { id: string; name: string; }
+
+// ─── Searchable leader dropdown ───────────────────────────────────────────────
+function LeaderSelect({
+  leaders, value, onChange, error,
+}: { leaders: Leader[]; value: string; onChange: (id: string) => void; error?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = leaders.find((l) => l.id === value);
+  const filtered = leaders.filter((l) => l.name.toLowerCase().includes(search.toLowerCase()));
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          'w-full flex items-center gap-2 bg-zinc-900 border rounded-xl px-3 py-2.5 text-sm text-left',
+          'focus:outline-none focus:ring-1 focus:ring-violet-500 transition-colors',
+          error ? 'border-red-500/50' : 'border-zinc-700 hover:border-zinc-600',
+        )}
+      >
+        {selected ? (
+          <>
+            <div className="w-6 h-6 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0">
+              <span className="text-xs text-violet-400 font-medium">{selected.name.charAt(0)}</span>
+            </div>
+            <span className="text-zinc-100">{selected.name}</span>
+          </>
+        ) : (
+          <span className="text-zinc-500">Search and select a leader…</span>
+        )}
+        <ChevronDown className={cn('ml-auto w-4 h-4 text-zinc-500 transition-transform shrink-0', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-xl">
+          <div className="p-2 border-b border-zinc-800">
+            <input
+              autoFocus
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-violet-500"
+              placeholder="Type to search…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="text-xs text-zinc-500 px-3 py-4 text-center">No leaders found</p>
+            ) : (
+              filtered.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2.5 text-sm text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 transition-colors"
+                  onClick={() => { onChange(l.id); setOpen(false); setSearch(''); }}
+                >
+                  <div className="w-7 h-7 rounded-full bg-violet-500/15 border border-violet-500/20 flex items-center justify-center shrink-0">
+                    <span className="text-xs text-violet-400 font-medium">{l.name.charAt(0)}</span>
+                  </div>
+                  <span>{l.name}</span>
+                  {l.id === value && <CheckCircle2 className="w-3.5 h-3.5 text-violet-400 ml-auto" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Select component ─────────────────────────────────────────────────────────
 function Select({
   id, value, onChange, options, placeholder, disabled, error,
@@ -86,16 +168,27 @@ export default function RegistrationFormPage() {
   const { slug }   = useParams<{ slug: string }>();
   const router     = useRouter();
   const { user, isAuthenticated } = useAuthStore();
-  const [submitting, setSubmitting]         = useState(false);
+  const [submitting, setSubmitting]             = useState(false);
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
-  const [selectedState, setSelectedState]   = useState('');
-  const [cities, setCities]                 = useState<string[]>([]);
-  const [citiesLoading, setCitiesLoading]   = useState(false);
+  const [selectedState, setSelectedState]       = useState('');
+  const [cities, setCities]                     = useState<string[]>([]);
+  const [citiesLoading, setCitiesLoading]       = useState(false);
+  const [referredById, setReferredById]         = useState('');
+  const [referredByError, setReferredByError]   = useState(false);
 
   const { data: event, isLoading, error } = useQuery<EventPublic>({
     queryKey: ['public-event', slug],
     queryFn: async () => {
       const { data } = await api.get(`/events/public/${slug}`);
+      return data;
+    },
+    retry: false,
+  });
+
+  const { data: leaders = [] } = useQuery<Leader[]>({
+    queryKey: ['event-leaders', slug],
+    queryFn: async () => {
+      const { data } = await api.get(`/events/public/${slug}/leaders`);
       return data;
     },
     retry: false,
@@ -161,12 +254,19 @@ export default function RegistrationFormPage() {
   }
 
   async function onSubmit(data: FormData) {
+    // Validate referred by if leaders exist
+    if (leaders.length > 0 && !referredById) {
+      setReferredByError(true);
+      return;
+    }
+    setReferredByError(false);
     setSubmitting(true);
     try {
       await api.post(`/registrations/${slug}`, {
         name: data.name, surname: data.surname, state: data.state, city: data.city,
         mobile: data.mobile, profession: data.profession,
         otherInfo: data.otherInfo || undefined,
+        ...(referredById ? { referredByUserId: referredById } : {}),
       });
       toast.success('Registered! Awaiting admin approval — check My Events for updates.');
       router.push('/my-events');
@@ -329,6 +429,27 @@ export default function RegistrationFormPage() {
                 placeholder="Dietary requirements, accessibility needs, etc."
                 {...register('otherInfo')} />
             </div>
+
+            {/* Referred by — mandatory when leaders exist */}
+            {leaders.length > 0 && (
+              <div>
+                <Label htmlFor="referredBy">
+                  Referred by *
+                  <span className="ml-1 text-zinc-500 font-normal text-xs">(select the leader who referred you)</span>
+                </Label>
+                <div className="mt-1.5">
+                  <LeaderSelect
+                    leaders={leaders}
+                    value={referredById}
+                    onChange={(id) => { setReferredById(id); setReferredByError(false); }}
+                    error={referredByError}
+                  />
+                </div>
+                {referredByError && (
+                  <p className="text-xs text-red-400 mt-1">Please select the leader who referred you</p>
+                )}
+              </div>
+            )}
 
             <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting

@@ -6,6 +6,7 @@
 export type RegistrationStatus = 'not_approved' | 'admin_approved' | 'approved';
 export type OrgStatus          = 'pending' | 'approved' | 'rejected' | 'suspended';
 export type MemberRole         = 'admin' | 'co_organizer';
+export type EventMemberRole    = 'co_organizer' | 'scanner' | 'leader';
 export type MemberStatus       = 'active' | 'inactive';
 
 // ─── Database row types ───────────────────────────────────────────────────────
@@ -59,20 +60,24 @@ export interface Event {
 }
 
 export interface Registration {
-  id:            string;
-  event_id:      string;
-  user_id:       string;
-  email:         string;
-  name:          string;
-  surname:       string;
-  state:         string;
-  city:          string;
-  mobile:        string;
-  profession:    string;
-  other_info:    string | null;
-  unique_code:   string;
-  status:        RegistrationStatus;
-  registered_at: string;
+  id:                   string;
+  event_id:             string;
+  user_id:              string;
+  email:                string;
+  name:                 string;
+  surname:              string;
+  state:                string;
+  city:                 string;
+  mobile:               string;
+  profession:           string;
+  other_info:           string | null;
+  unique_code:          string;
+  status:               RegistrationStatus;
+  registered_at:        string;
+  referred_by_user_id:  string | null;
+  referred_by_name:     string | null;
+  is_acknowledged:      boolean;
+  acknowledged_at:      string | null;
 }
 
 export interface Checkin {
@@ -91,7 +96,7 @@ export interface JWTPayload {
   name:       string;
   // Org member fields — present only if user has an org role
   memberId?:  string;      // org_members.id (absent for event-only members)
-  role?:      MemberRole | 'super_admin';
+  role?:      MemberRole | 'leader' | 'scanner' | 'super_admin';
   orgId?:     string;
   orgName?:   string;
   orgStatus?: OrgStatus;
@@ -201,8 +206,8 @@ export interface SuperAdminAuthResponse {
 export interface EventWithCounts extends Omit<Event, 'admin_password'> {
   registration_count: number;
   checkin_count:      number;
-  // Per-request: the calling user's role on this event (null = admin, has full access)
-  userEventRole?: 'co_organizer' | 'scanner' | null;
+  // Per-request: the calling user's role on this event (null = admin/org-member with full access)
+  userEventRole?: EventMemberRole | null;
 }
 
 /** org_members row joined with user name/email for display */

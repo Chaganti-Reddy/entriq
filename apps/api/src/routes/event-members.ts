@@ -16,7 +16,7 @@ import type { AppEnv } from '../types/index.js';
 
 const assignSchema = z.object({
   email: z.string().email(),
-  role:  z.enum(['co_organizer', 'scanner']).default('co_organizer'),
+  role:  z.enum(['co_organizer', 'scanner', 'leader']).default('co_organizer'),
   // New user fields (optional — only needed if user doesn't exist yet)
   name:     z.string().min(2).max(100).trim().optional(),
   password: z.string().min(8).max(100).optional(),
@@ -214,16 +214,61 @@ eventMembersRouter.post('/', requireRole('admin'), zValidator('json', assignSche
 
 // ─── PATCH /events/:id/members/:memberId — change role ───────────────────────
 eventMembersRouter.patch('/:memberId', requireRole('admin'), zValidator('json', z.object({
-  role: z.enum(['co_organizer', 'scanner']),
+  role: z.enum(['co_organizer', 'scanner', 'leader']),
+  autoAcknowledge: z.boolean().optional(), // when demoting a leader, auto-ack their pending referrals
 })), async (c) => {
   const params = c.req.param() as { id: string; memberId: string }; const eventId = params.id; const memberId = params.memberId;
   const user = c.get('user');
-  const { role } = c.req.valid('json');
+  const { role, autoAcknowledge } = c.req.valid('json');
 
   // Verify event belongs to org
   const { data: event } = await db
     .from('events').select('id').eq('id', eventId).eq('org_id', user.orgId!).maybeSingle();
   if (!event) return c.json({ error: 'Event not found' }, 404);
+
+  // Fetch current member to check if we're demoting a leader
+  const { data: currentMember } = await db
+    .from('event_members')
+    .select('id, user_id, role')
+    .eq('id', memberId)
+    .eq('event_id', eventId)
+    .maybeSingle();
+
+  if (!currentMember) return c.json({ error: 'Member not found' }, 404);
+
+  const isDemotingLeader = currentMember.role === 'leader' && role !== 'leader';
+
+  if (isDemotingLeader) {
+    // Count unacknowledged referrals by this leader for this event
+    const { count: unackCount } = await db
+      .from('registrations')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', eventId)
+      .eq('referred_by_user_id', currentMember.user_id)
+      .eq('is_acknowledged', false);
+
+    const pendingCount = unackCount ?? 0;
+
+    if (pendingCount > 0 && !autoAcknowledge) {
+      // Return warning without making changes — frontend must confirm
+      return c.json({
+        warning: 'leader_has_pending_referrals',
+        pendingReferrals: pendingCount,
+        memberId,
+        newRole: role,
+      }, 409);
+    }
+
+    if (pendingCount > 0 && autoAcknowledge) {
+      // Auto-acknowledge all pending referrals before demoting
+      await db
+        .from('registrations')
+        .update({ is_acknowledged: true, acknowledged_at: new Date().toISOString() })
+        .eq('event_id', eventId)
+        .eq('referred_by_user_id', currentMember.user_id)
+        .eq('is_acknowledged', false);
+    }
+  }
 
   const { data: updated, error } = await db
     .from('event_members')

@@ -114,9 +114,8 @@ async function buildAuthResponse(userId: string): Promise<AuthResponse | null> {
   if (!member) {
     const { data: eventAssignments } = await db
       .from('event_members')
-      .select('org_id')
-      .eq('user_id', user.id)
-      .limit(1);
+      .select('org_id, role')
+      .eq('user_id', user.id);
 
     if (eventAssignments?.length) {
       const { data: orgData } = await db
@@ -126,11 +125,17 @@ async function buildAuthResponse(userId: string): Promise<AuthResponse | null> {
         .maybeSingle();
 
       if (orgData) {
+        // Pick most privileged role across all event assignments
+        const rolePriority: Record<string, number> = { co_organizer: 3, leader: 2, scanner: 1 };
+        const effectiveRole = eventAssignments.reduce((best, a) =>
+          (rolePriority[a.role] ?? 0) > (rolePriority[best.role] ?? 0) ? a : best
+        ).role as 'co_organizer' | 'leader' | 'scanner';
+
         const payload: JWTPayload = {
           sub:          user.id,
           email:        user.email,
           name:         user.name,
-          role:         'co_organizer',
+          role:         effectiveRole,
           orgId:        orgData.id,
           orgName:      orgData.name,
           orgStatus:    'approved',
@@ -144,10 +149,10 @@ async function buildAuthResponse(userId: string): Promise<AuthResponse | null> {
             id:            user.id,
             name:          user.name,
             email:         user.email,
-            role:          'co_organizer',
+            role:          effectiveRole as any,
             orgId:         orgData.id,
             orgName:       orgData.name,
-            orgStatus:     'approved',
+            orgStatus:     'approved' as const,
             isEventMember: true,
           },
         };

@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   UserPlus, Trash2, ArrowLeft, Loader2, Search, User,
-  UserCheck, CheckCircle2, X, ScanLine, ShieldCheck, Mail,
+  UserCheck, CheckCircle2, X, ScanLine, ShieldCheck, Mail, Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { PasswordInput } from '@/components/ui/password-input';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { Spinner } from '@/components/ui/spinner';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/lib/api';
 import type { EventWithCounts } from '@entriq/shared';
@@ -27,7 +28,7 @@ import type { EventWithCounts } from '@entriq/shared';
 
 interface EventMember {
   id: string;
-  role: 'co_organizer' | 'scanner';
+  role: 'co_organizer' | 'scanner' | 'leader';
   created_at: string;
   user: { id: string; name: string; email: string };
 }
@@ -50,11 +51,16 @@ export default function EventTeamPage() {
 
   const [panelOpen, setPanelOpen]   = useState(false);
   const [email, setEmail]           = useState('');
-  const [role, setRole]             = useState<'co_organizer' | 'scanner'>('co_organizer');
+  const [role, setRole] = useState<'co_organizer' | 'scanner' | 'leader'>('co_organizer');
   const [lookup, setLookup]         = useState<LookupResult | null>(null);
   const [checking, setChecking]     = useState(false);
   const [newName, setNewName]       = useState('');
   const [newPassword, setNewPassword] = useState('');
+
+  // Demotion warning state
+  const [demoteWarning, setDemoteWarning] = useState<{
+    memberId: string; newRole: string; pendingReferrals: number; memberName: string;
+  } | null>(null);
 
   const isAdmin = user?.role === 'admin';
 
@@ -85,10 +91,22 @@ export default function EventTeamPage() {
   });
 
   const updateRoleMutation = useMutation({
-    mutationFn: ({ memberId, newRole }: { memberId: string; newRole: string }) =>
-      api.patch(`/events/${id}/members/${memberId}`, { role: newRole }),
-    onSuccess: () => { toast.success('Role updated'); qc.invalidateQueries({ queryKey: ['event-members', id] }); },
-    onError: () => toast.error('Failed to update role'),
+    mutationFn: ({ memberId, newRole, autoAcknowledge }: { memberId: string; newRole: string; autoAcknowledge?: boolean }) =>
+      api.patch(`/events/${id}/members/${memberId}`, { role: newRole, autoAcknowledge }),
+    onSuccess: () => {
+      toast.success('Role updated');
+      qc.invalidateQueries({ queryKey: ['event-members', id] });
+      qc.invalidateQueries({ queryKey: ['registrations', id] });
+      setDemoteWarning(null);
+    },
+    onError: (err: unknown) => {
+      const res = (err as { response?: { data?: { warning?: string; pendingReferrals?: number } } })?.response;
+      if (res?.data?.warning === 'leader_has_pending_referrals') {
+        // API returned 409 — surface the warning dialog (will be set by the caller)
+        return;
+      }
+      toast.error('Failed to update role');
+    },
   });
 
   const removeMutation = useMutation({
@@ -102,6 +120,29 @@ export default function EventTeamPage() {
     setPanelOpen(false); setEmail(''); setLookup(null);
     setNewName(''); setNewPassword(''); setChecking(false);
     setRole('co_organizer');
+  }
+
+  async function handleRoleChange(member: EventMember, newRole: 'co_organizer' | 'scanner' | 'leader') {
+    if (member.role === newRole) return;
+    // Optimistically attempt; backend returns 409 if demotion has pending referrals
+    try {
+      await api.patch(`/events/${id}/members/${member.id}`, { role: newRole });
+      toast.success('Role updated');
+      qc.invalidateQueries({ queryKey: ['event-members', id] });
+      qc.invalidateQueries({ queryKey: ['registrations', id] });
+    } catch (err: unknown) {
+      const res = (err as { response?: { status?: number; data?: { warning?: string; pendingReferrals?: number } } })?.response;
+      if (res?.status === 409 && res.data?.warning === 'leader_has_pending_referrals') {
+        setDemoteWarning({
+          memberId: member.id,
+          newRole,
+          pendingReferrals: res.data.pendingReferrals ?? 0,
+          memberName: member.user.name,
+        });
+        return;
+      }
+      toast.error('Failed to update role');
+    }
   }
 
   async function handleLookup() {
@@ -175,23 +216,30 @@ export default function EventTeamPage() {
           </div>
 
           {/* Role selector */}
-          <div className="mb-4 flex gap-2">
-            {(['co_organizer', 'scanner'] as const).map((r) => (
+          <div className="mb-4 flex gap-2 flex-wrap">
+            {(['co_organizer', 'leader', 'scanner'] as const).map((r) => (
               <button
                 key={r}
                 onClick={() => setRole(r)}
                 className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
                   role === r
-                    ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
+                    ? r === 'leader'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                     : 'text-zinc-400 border-zinc-700 hover:border-zinc-500'
                 }`}
               >
-                {r === 'co_organizer'
-                  ? <><ShieldCheck className="w-3 h-3" /> Co-organizer</>
-                  : <><ScanLine className="w-3 h-3" /> Scanner</>}
+                {r === 'co_organizer' ? <><ShieldCheck className="w-3 h-3" /> Co-organizer</>
+                 : r === 'leader'     ? <><Star className="w-3 h-3" /> Leader</>
+                 :                      <><ScanLine className="w-3 h-3" /> Scanner</>}
               </button>
             ))}
           </div>
+          {role === 'leader' && (
+            <p className="text-xs text-amber-300/70 bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2 mb-4">
+              Leaders can approve registrants and see referral data. They also appear in the "Referred by" dropdown on the registration form.
+            </p>
+          )}
 
           {/* Step 1 — email check */}
           {!lookup && (
@@ -339,30 +387,33 @@ export default function EventTeamPage() {
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell">
                     {isAdmin ? (
-                      <div className="flex gap-2">
-                        {(['co_organizer', 'scanner'] as const).map((r) => (
+                      <div className="flex gap-2 flex-wrap">
+                        {(['co_organizer', 'leader', 'scanner'] as const).map((r) => (
                           <button
                             key={r}
-                            onClick={() => m.role !== r && updateRoleMutation.mutate({ memberId: m.id, newRole: r })}
+                            onClick={() => handleRoleChange(m, r)}
+                            disabled={updateRoleMutation.isPending}
                             className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium transition-colors ${
                               m.role === r
-                                ? r === 'co_organizer'
-                                  ? 'bg-blue-500/15 text-blue-400 border-blue-500/20'
-                                  : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
+                                ? r === 'co_organizer' ? 'bg-blue-500/15 text-blue-400 border-blue-500/20'
+                                  : r === 'leader'     ? 'bg-amber-500/15 text-amber-400 border-amber-500/20'
+                                  :                      'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
                                 : 'text-zinc-600 border-zinc-700 hover:border-zinc-500 hover:text-zinc-400'
                             }`}
                           >
-                            {r === 'co_organizer' ? <><ShieldCheck className="w-3 h-3" /> Co-organizer</> : <><ScanLine className="w-3 h-3" /> Scanner</>}
+                            {r === 'co_organizer' ? <><ShieldCheck className="w-3 h-3" /> Co-organizer</>
+                             : r === 'leader'      ? <><Star className="w-3 h-3" /> Leader</>
+                             :                       <><ScanLine className="w-3 h-3" /> Scanner</>}
                           </button>
                         ))}
                       </div>
                     ) : (
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
-                        m.role === 'co_organizer'
-                          ? 'bg-blue-500/15 text-blue-400 border-blue-500/20'
-                          : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
+                        m.role === 'co_organizer' ? 'bg-blue-500/15 text-blue-400 border-blue-500/20'
+                        : m.role === 'leader'     ? 'bg-amber-500/15 text-amber-400 border-amber-500/20'
+                        :                           'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
                       }`}>
-                        {m.role === 'co_organizer' ? 'Co-organizer' : 'Scanner'}
+                        {m.role === 'co_organizer' ? 'Co-organizer' : m.role === 'leader' ? 'Leader' : 'Scanner'}
                       </span>
                     )}
                   </td>
@@ -388,6 +439,29 @@ export default function EventTeamPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* ── Leader demotion warning dialog ── */}
+      {demoteWarning && (
+        <ConfirmDialog
+          open={true}
+          title="Leader has pending referrals"
+          description={
+            `${demoteWarning.memberName} is being changed from Leader to ${demoteWarning.newRole === 'co_organizer' ? 'Co-organizer' : 'Scanner'}, ` +
+            `but they have ${demoteWarning.pendingReferrals} unacknowledged referral${demoteWarning.pendingReferrals !== 1 ? 's' : ''}. ` +
+            `Auto-acknowledge all of them now and change the role, or cancel to keep them as Leader.`
+          }
+          confirmLabel={`Auto-acknowledge ${demoteWarning.pendingReferrals} & change role`}
+          loading={updateRoleMutation.isPending}
+          onConfirm={() =>
+            updateRoleMutation.mutate({
+              memberId: demoteWarning.memberId,
+              newRole: demoteWarning.newRole,
+              autoAcknowledge: true,
+            })
+          }
+          onCancel={() => setDemoteWarning(null)}
+        />
       )}
     </div>
   );

@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Users, CheckCircle2, Clock, BarChart3,
   Link2, ExternalLink, Search, Download, RefreshCw, ScanLine, Users2,
-  UserCheck, CheckCheck, Square, CheckSquare, Trash2,
+  UserCheck, CheckCheck, Square, CheckSquare, Trash2, Star, BadgeCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -32,14 +32,14 @@ export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [statusFilter, setStatusFilter] = useState<'all' | 'not_approved' | 'admin_approved' | 'approved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'not_approved' | 'admin_approved' | 'approved' | 'not_acknowledged'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [deleteTarget, setDeleteTarget]         = useState<Registration | null>(null);
+  const [deleteTarget, setDeleteTarget]           = useState<Registration | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [referredByMeOnly, setReferredByMeOnly]   = useState(false);
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const isAdmin       = user?.role === 'admin';
-  const isEventMember = (user as any)?.isEventMember === true;
+  const isAdmin = user?.role === 'admin';
 
   const { data: event, isLoading: eventLoading } = useQuery<EventWithCounts>({
     queryKey: ['event', id],
@@ -47,6 +47,7 @@ export default function EventDetailPage() {
       const { data } = await api.get(`/events/${id}`);
       return data;
     },
+    refetchInterval: 30_000,
   });
 
   const { data: registrations, isLoading: regsLoading, refetch } = useQuery<Registration[]>({
@@ -104,6 +105,15 @@ export default function EventDetailPage() {
     onError: () => toast.error('Failed to delete. Please try again.'),
   });
 
+  const acknowledgeMutation = useMutation({
+    mutationFn: (regId: string) => api.patch(`/registrations/${regId}/acknowledge`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['registrations', id] });
+      toast.success('Referral acknowledged!');
+    },
+    onError: () => toast.error('Failed to acknowledge.'),
+  });
+
   const toggleSelect = useCallback((regId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -117,9 +127,14 @@ export default function EventDetailPage() {
   const formLink = event ? `${APP_URL}/e/${event.slug}` : '';
 
   const filtered = registrations?.filter((r) => {
-    if (statusFilter === 'not_approved'  && r.status !== 'not_approved')  return false;
-    if (statusFilter === 'admin_approved' && r.status !== 'admin_approved') return false;
-    if (statusFilter === 'approved'       && r.status !== 'approved')       return false;
+    if (referredByMeOnly) {
+      if (r.referred_by_user_id !== user?.id) return false;
+    } else {
+      if (statusFilter === 'not_approved'    && r.status !== 'not_approved')  return false;
+      if (statusFilter === 'admin_approved'  && r.status !== 'admin_approved') return false;
+      if (statusFilter === 'approved'        && r.status !== 'approved')       return false;
+      if (statusFilter === 'not_acknowledged' && !(r.referred_by_user_id && !r.is_acknowledged)) return false;
+    }
     const q = search.toLowerCase();
     return !q || (
       r.name.toLowerCase().includes(q) ||
@@ -128,6 +143,10 @@ export default function EventDetailPage() {
       r.city.toLowerCase().includes(q)
     );
   });
+
+  // Counts for filter pills
+  const notAcknowledgedCount = registrations?.filter((r) => r.referred_by_user_id && !r.is_acknowledged).length ?? 0;
+  const referredByMeCount    = registrations?.filter((r) => r.referred_by_user_id === user?.id).length ?? 0;
 
   const toggleSelectAll = useCallback(() => {
     const visible = (filtered ?? []);
@@ -163,11 +182,17 @@ export default function EventDetailPage() {
     URL.revokeObjectURL(url);
   }
 
-  const checkinRate = event
-    ? Math.round(((event.checkin_count) / Math.max(event.registration_count, 1)) * 100)
+  // Derive live counts from the registrations array (refreshes every 30s)
+  // so stat cards stay in sync without a separate event query refresh.
+  const liveRegisteredCount = registrations?.length ?? event?.registration_count ?? 0;
+  const liveCheckedInCount  = registrations?.filter((r) => r.status === 'approved').length ?? event?.checkin_count ?? 0;
+
+  const checkinRate = liveRegisteredCount > 0
+    ? Math.round((liveCheckedInCount / liveRegisteredCount) * 100)
     : 0;
 
-  const isScanner = event?.userEventRole === 'scanner';
+  const isScanner  = event?.userEventRole === 'scanner';
+  const isLeader   = (user?.role as string) === 'leader' || event?.userEventRole === 'leader';
 
   const pendingCount       = registrations?.filter((r) => r.status === 'not_approved').length ?? 0;
   const adminApprovedCount = registrations?.filter((r) => r.status === 'admin_approved').length ?? 0;
@@ -230,9 +255,9 @@ export default function EventDetailPage() {
       {/* Stats */}
       {!isScanner && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Registered"  value={event.registration_count} icon={Users}          accentColor="default" />
-        <StatCard label="Checked in"  value={event.checkin_count}      icon={CheckCircle2}   accentColor="green"  />
-        <StatCard label="Pending"     value={event.registration_count - event.checkin_count} icon={Clock} accentColor="yellow" />
+        <StatCard label="Registered"  value={liveRegisteredCount} icon={Users}          accentColor="default" />
+        <StatCard label="Checked in"  value={liveCheckedInCount}  icon={CheckCircle2}   accentColor="green"  />
+        <StatCard label="Pending"     value={liveRegisteredCount - liveCheckedInCount}  icon={Clock} accentColor="yellow" />
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -297,8 +322,8 @@ export default function EventDetailPage() {
             </h2>
             {/* Status filter pills */}
             {registrations && registrations.length > 0 && (
-              <div className="flex items-center gap-1">
-                {(['all', 'not_approved', 'admin_approved', 'approved'] as const).map((f) => {
+              <div className="flex items-center gap-1 flex-wrap">
+                {!referredByMeOnly && (['all', 'not_approved', 'admin_approved', 'approved'] as const).map((f) => {
                   const label =
                     f === 'all'           ? `All (${registrations.length})` :
                     f === 'not_approved'  ? `Pending (${pendingCount})` :
@@ -321,6 +346,33 @@ export default function EventDetailPage() {
                     </button>
                   );
                 })}
+                {/* Not acknowledged filter — only if there are any unacknowledged */}
+                {notAcknowledgedCount > 0 && !referredByMeOnly && (
+                  <button
+                    onClick={() => { setStatusFilter('not_acknowledged'); setSelectedIds(new Set()); }}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                      statusFilter === 'not_acknowledged'
+                        ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
+                    }`}
+                  >
+                    Not Acknowledged ({notAcknowledgedCount})
+                  </button>
+                )}
+                {/* Referred by me — visible to leaders */}
+                {isLeader && referredByMeCount > 0 && (
+                  <button
+                    onClick={() => { setReferredByMeOnly((v) => !v); setStatusFilter('all'); setSelectedIds(new Set()); }}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors flex items-center gap-1 ${
+                      referredByMeOnly
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'
+                    }`}
+                  >
+                    <Star className="w-3 h-3" />
+                    Referred by me ({referredByMeCount})
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -415,7 +467,13 @@ export default function EventDetailPage() {
         ) : !filtered?.length ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
             <p className="text-zinc-500 text-sm">
-              {search ? 'No registrations match your search.' : statusFilter !== 'all' ? `No ${statusFilter === 'not_approved' ? 'pending' : statusFilter === 'admin_approved' ? 'approved' : 'checked-in'} registrations.` : 'No registrations yet.'}
+              {search ? 'No registrations match your search.' :
+               referredByMeOnly ? 'No registrations referred by you yet.' :
+               statusFilter === 'not_approved' ? 'No pending registrations.' :
+               statusFilter === 'admin_approved' ? 'No approved registrations.' :
+               statusFilter === 'approved' ? 'No checked-in registrations.' :
+               statusFilter === 'not_acknowledged' ? 'All referrals have been acknowledged.' :
+               'No registrations yet.'}
             </p>
             {!search && statusFilter === 'all' && (
               <p className="text-zinc-600 text-xs mt-1">
@@ -458,6 +516,18 @@ export default function EventDetailPage() {
                           {reg.name} {reg.surname}
                         </span>
                         <StatusBadge status={reg.status} />
+                        {/* Referral badge */}
+                        {reg.referred_by_name && (
+                          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                            reg.is_acknowledged
+                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                              : 'bg-orange-500/10 text-orange-300 border-orange-500/20'
+                          }`}>
+                            <Star className="w-2.5 h-2.5" />
+                            {reg.referred_by_name}
+                            {reg.is_acknowledged && <BadgeCheck className="w-2.5 h-2.5 ml-0.5" />}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-zinc-500 mb-1">{reg.email}</p>
                       <div className="flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
@@ -493,6 +563,20 @@ export default function EventDetailPage() {
                         <div className="w-8 h-8 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center">
                           <CheckCircle2 className="w-4 h-4 text-green-400" />
                         </div>
+                      )}
+                      {/* Acknowledge button — leader can ack their own referrals */}
+                      {isLeader && reg.referred_by_user_id === user?.id && !reg.is_acknowledged && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/20"
+                          onClick={() => acknowledgeMutation.mutate(reg.id)}
+                          disabled={acknowledgeMutation.isPending}
+                          title="Acknowledge this referral"
+                        >
+                          <BadgeCheck className="w-3.5 h-3.5" />
+                          Ack
+                        </Button>
                       )}
                       <button
                         onClick={() => setDeleteTarget(reg)}

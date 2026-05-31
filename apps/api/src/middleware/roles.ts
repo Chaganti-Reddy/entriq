@@ -3,15 +3,16 @@
 // Always use AFTER authMiddleware (which attaches `user` to context).
 
 import type { MiddlewareHandler } from 'hono';
-import type { AppEnv, MemberRole } from '../types/index.js';
+import type { AppEnv } from '../types/index.js';
 import { db } from '../services/db.js';
 
 /**
  * requireRole('admin') — only org admins may proceed.
- * requireRole('co_organizer') — both admins and co-organizers may proceed.
- * Also enforces that the org is 'approved' before allowing any dashboard action.
+ * requireRole('co_organizer') — org admins and co-organizers may proceed.
+ * requireRole('co_organizer', 'admin', 'leader') — also allows event-level leaders.
+ * Enforces that the org is 'approved' before allowing any dashboard action.
  */
-export function requireRole(...roles: MemberRole[]): MiddlewareHandler<AppEnv> {
+export function requireRole(...roles: string[]): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const user = c.get('user');
 
@@ -21,7 +22,7 @@ export function requireRole(...roles: MemberRole[]): MiddlewareHandler<AppEnv> {
       return;
     }
 
-    // Must have org context (orgId present in token)
+    // Must have org context
     if (!user.orgId) {
       return c.json({ error: 'Forbidden' }, 403);
     }
@@ -39,7 +40,7 @@ export function requireRole(...roles: MemberRole[]): MiddlewareHandler<AppEnv> {
     }
 
     // Must have the required role
-    if (!roles.includes(user.role as MemberRole)) {
+    if (!roles.includes(user.role as string)) {
       return c.json({ error: 'Insufficient permissions' }, 403);
     }
 
@@ -76,7 +77,7 @@ export const requireEventAccess: MiddlewareHandler<AppEnv> = async (c, next) => 
   // org membership already grants dashboard access; event_members is additive only.
   if (user.memberId && !user.isEventMember) { await next(); return; }
 
-  // Event-only members: must be assigned to this specific event
+  // Event-only members (co_organizer / leader / scanner): must be assigned to this specific event
   if (!eventId) return c.json({ error: 'Missing event id' }, 400);
 
   const { data: membership } = await db

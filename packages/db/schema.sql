@@ -78,6 +78,10 @@ CREATE TABLE registrations (
   status        TEXT        DEFAULT 'not_approved'
                             CHECK (status IN ('not_approved', 'admin_approved', 'approved')),
   registered_at TIMESTAMPTZ DEFAULT NOW(),
+  referred_by_user_id TEXT,
+  referred_by_name    TEXT,
+  is_acknowledged     BOOLEAN     DEFAULT FALSE,
+  acknowledged_at     TIMESTAMPTZ,
   CONSTRAINT uq_registrations_event_user UNIQUE (event_id, user_id)
 );
 
@@ -100,7 +104,7 @@ CREATE TABLE event_members (
   event_id   UUID        NOT NULL REFERENCES events(id)      ON DELETE CASCADE,
   user_id    UUID        NOT NULL REFERENCES users(id)       ON DELETE CASCADE,
   org_id     UUID        NOT NULL REFERENCES orgs(id)        ON DELETE CASCADE,
-  role       TEXT        NOT NULL CHECK (role IN ('co_organizer', 'scanner')),
+  role       TEXT        NOT NULL CHECK (role IN ('co_organizer', 'scanner', 'leader')),
   invited_by UUID        REFERENCES org_members(id)          ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (event_id, user_id)
