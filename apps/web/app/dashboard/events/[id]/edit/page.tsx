@@ -224,7 +224,7 @@ export default function EditEventPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="date">Date *</Label>
-            <Input id="date" type="date" className="mt-1.5" error={!!errors.date} {...register('date')} />
+            <Input id="date" type="date" className="mt-1.5" error={!!errors.date} min={new Date().toISOString().split('T')[0]} {...register('date')} />
             {errors.date && <p className="text-xs text-red-400 mt-1">{errors.date.message}</p>}
           </div>
           <div>

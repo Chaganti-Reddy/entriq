@@ -31,7 +31,7 @@ const nextConfig = {
               // Fonts: self
               "font-src 'self'",
               // API calls
-              `connect-src 'self' ${apiOrigin} https://countriesnow.space`,
+              `connect-src 'self' ${apiOrigin} https://countriesnow.space https://nominatim.openstreetmap.org`,
               // No frames, objects, or base URI changes
               "frame-ancestors 'none'",
               "object-src 'none'",
