@@ -141,7 +141,7 @@ export default function EventDetailPage() {
     return !q || (
       r.name.toLowerCase().includes(q) ||
       r.surname.toLowerCase().includes(q) ||
-      r.email.toLowerCase().includes(q) ||
+      (r.email ?? '').toLowerCase().includes(q) ||
       r.city.toLowerCase().includes(q)
     );
   });
@@ -502,16 +502,18 @@ export default function EventDetailPage() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    {/* Checkbox — all rows */}
-                    <button
-                      onClick={() => toggleSelect(reg.id)}
-                      className="mt-0.5 shrink-0 text-zinc-500 hover:text-violet-400 transition-colors"
-                      aria-label={isSelected ? 'Deselect' : 'Select'}
-                    >
-                      {isSelected
-                        ? <CheckSquare className="w-4 h-4 text-violet-400" />
-                        : <Square className="w-4 h-4" />}
-                    </button>
+                    {/* Checkbox — hide for leaders (no bulk approve/delete actions) */}
+                    {!isLeader && (
+                      <button
+                        onClick={() => toggleSelect(reg.id)}
+                        className="mt-0.5 shrink-0 text-zinc-500 hover:text-violet-400 transition-colors"
+                        aria-label={isSelected ? 'Deselect' : 'Select'}
+                      >
+                        {isSelected
+                          ? <CheckSquare className="w-4 h-4 text-violet-400" />
+                          : <Square className="w-4 h-4" />}
+                      </button>
+                    )}
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
@@ -533,7 +535,7 @@ export default function EventDetailPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-zinc-500 mb-1">{reg.email}</p>
+                      <p className="text-xs text-zinc-500 mb-1">{reg.email ?? (reg.mobile ? `+91 ${reg.mobile}` : '')}</p>
                       <div className="flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
                         <span>{reg.city}, {reg.state}</span>
                         <span>·</span>

@@ -19,7 +19,7 @@ type OrgStatus = 'pending' | 'approved' | 'rejected' | 'suspended';
 interface OrgSummary {
   id:               string;
   name:             string;
-  email:            string;
+  email:            string | null;
   status:           OrgStatus;
   rejection_reason: string | null;
   created_at:       string;
@@ -160,7 +160,7 @@ function OrgsContent() {
                   <tr key={org.id} className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/20 transition-colors">
                     <td className="px-4 py-3">
                       <p className="text-zinc-200 font-medium">{org.name}</p>
-                      <p className="text-zinc-500 text-xs">{org.email}</p>
+                      <p className="text-zinc-500 text-xs">{org.email ?? '—'}</p>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell">
                       <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${badge.cls}`}>

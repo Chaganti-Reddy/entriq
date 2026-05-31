@@ -129,7 +129,7 @@ export default function PendingApprovalPage() {
                 <span className="text-zinc-500">Organisation: </span>{user.orgName}
               </p>
               <p className="text-sm text-zinc-300">
-                <span className="text-zinc-500">Email: </span>{user.email}
+                <span className="text-zinc-500">Mobile: </span>{user.mobile ? `+91 ${user.mobile}` : (user.email ?? '—')}
               </p>
               <p className="text-sm text-zinc-300">
                 <span className="text-zinc-500">Role: </span>Admin

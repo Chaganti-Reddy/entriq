@@ -28,8 +28,8 @@ interface Registrant {
 }
 
 interface OrgDetail {
-  org: { id: string; name: string; email: string; status: OrgStatus; rejection_reason: string | null; created_at: string };
-  members: { id: string; name: string; email: string; role: string; status: string; created_at: string }[];
+  org: { id: string; name: string; email: string | null; status: OrgStatus; rejection_reason: string | null; created_at: string };
+  members: { id: string; name: string; mobile: string; role: string; status: string; created_at: string }[];
   events: {
     id: string; name: string; slug: string; description: string | null;
     date: string | null; location: string | null; is_active: boolean;
@@ -95,7 +95,7 @@ function EventRow({ ev }: { ev: OrgDetail['events'][number] }) {
                   <div>
                     <p className="text-sm font-medium text-zinc-200">{r.name} {r.surname}</p>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      <span className="flex items-center gap-1 text-xs text-zinc-500"><Mail className="w-3 h-3" />{r.email}</span>
+                      {r.email && <span className="flex items-center gap-1 text-xs text-zinc-500"><Mail className="w-3 h-3" />{r.email}</span>}
                       <span className="flex items-center gap-1 text-xs text-zinc-500"><Phone className="w-3 h-3" />+91 {r.mobile}</span>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-1">
@@ -190,7 +190,7 @@ export default function OrgDetailPage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-zinc-100">{org.name}</h1>
-                <p className="text-sm text-zinc-500 flex items-center gap-1"><Mail className="w-3 h-3" />{org.email}</p>
+                <p className="text-sm text-zinc-500 flex items-center gap-1"><Mail className="w-3 h-3" />{org.email ?? '—'}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
@@ -282,7 +282,7 @@ export default function OrgDetailPage() {
             <h3 className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Organisation details</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
               {[
-                ['Name', org.name], ['Contact email', org.email],
+                ['Name', org.name], ['Contact email', org.email ?? '—'],
                 ['Total events', String(events.length)], ['Total registrations', String(registration_count)],
                 ['Joined', formatDateShort(org.created_at)],
               ].map(([label, val]) => (
@@ -302,7 +302,7 @@ export default function OrgDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-zinc-200">{m.name}</p>
-                  <p className="text-xs text-zinc-500 flex items-center gap-1"><Mail className="w-3 h-3" />{m.email}</p>
+                  <p className="text-xs text-zinc-500 flex items-center gap-1"><Phone className="w-3 h-3" />{m.mobile ? `+91 ${m.mobile}` : '—'}</p>
                 </div>
               </div>
             </div>
@@ -344,7 +344,7 @@ export default function OrgDetailPage() {
                           </div>
                           <div>
                             <p className="text-zinc-200 font-medium">{m.name}</p>
-                            <p className="text-zinc-500 text-xs">{m.email}</p>
+                            <p className="text-zinc-500 text-xs">{m.mobile ? `+91 ${m.mobile}` : '—'}</p>
                           </div>
                         </div>
                       </td>

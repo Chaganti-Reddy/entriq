@@ -80,7 +80,7 @@ registrationsRouter.post('/:eventSlug', registrationLimiter, authMiddleware, zVa
     .insert({
       event_id:             event.id,
       user_id:              user.sub,
-      email:                user.email,
+      email:                user.email ?? null,
       name:                 body.name,
       surname:              body.surname,
       state:                body.state,

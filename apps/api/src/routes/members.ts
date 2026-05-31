@@ -1,6 +1,6 @@
 // apps/api/src/routes/members.ts
 // Org member management — admins invite/manage co-organizers.
-// Smart invite: if invitee already has an account, no password needed.
+// Phone-first: only existing phone-verified Entriq accounts can be added.
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
@@ -10,12 +10,11 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roles.js';
 import type { AppEnv } from '../types/index.js';
 
+const phoneSchema = z.string().trim().regex(/^\d{10}$/, 'Enter a valid 10-digit phone number');
+
 const inviteSchema = z.object({
-  email:    z.string().email().toLowerCase().trim(),
-  role:     z.literal('co_organizer'),
-  // Only required when creating a new account
-  name:     z.string().min(2).max(100).trim().optional(),
-  password: z.string().min(8).max(128).optional(),
+  phone: phoneSchema,
+  role:  z.literal('co_organizer'),
 });
 
 const updateMemberSchema = z.object({
@@ -33,7 +32,7 @@ membersRouter.get('/', async (c) => {
 
   const { data: members, error } = await db
     .from('org_members')
-    .select('id, user_id, role, status, invited_by, created_at, users(name, email)')
+    .select('id, user_id, role, status, invited_by, created_at, users(name, mobile)')
     .eq('org_id', user.orgId!)
     .order('created_at', { ascending: true });
 
@@ -46,7 +45,7 @@ membersRouter.get('/', async (c) => {
     id:         m.id,
     user_id:    m.user_id,
     name:       m.users?.name ?? '',
-    email:      m.users?.email ?? '',
+    mobile:     m.users?.mobile ?? '',
     role:       m.role,
     status:     m.status,
     invited_by: m.invited_by,
@@ -56,118 +55,74 @@ membersRouter.get('/', async (c) => {
   return c.json(flat);
 });
 
-// GET /members/lookup?email= — check if email is a registered user
+// GET /members/lookup?phone= — check if a phone-verified account can be added to this org
 membersRouter.get('/lookup', async (c) => {
-  const email = c.req.query('email')?.toLowerCase().trim();
-  if (!email) return c.json({ error: 'email query required' }, 400);
+  const user  = c.get('user');
+  const phone = c.req.query('phone')?.trim();
+  if (!phone || !/^\d{10}$/.test(phone)) return c.json({ error: 'phone query required (10 digits)' }, 400);
 
-  // Check public.users first
-  let existing: { id: string; name: string } | null = null;
-  const { data: regularUser } = await db
+  const { data: targetUser } = await db
     .from('users')
-    .select('id, name')
-    .eq('email', email)
+    .select('id, name, mobile_verified')
+    .eq('mobile', phone)
     .maybeSingle();
 
-  if (regularUser) {
-    existing = regularUser;
-  } else {
-    // Also check super_admins table — they don't have a public.users record
-    const { data: superAdmin } = await db
-      .from('super_admins')
-      .select('id, name')
-      .eq('email', email)
-      .maybeSingle();
-    if (superAdmin) {
-      return c.json({ found: true, name: superAdmin.name, isSuperAdmin: true, sameOrg: false, otherOrg: false });
-    }
-  }
+  if (!targetUser) return c.json({ found: false });
+  if (!targetUser.mobile_verified) return c.json({ found: true, unverified: true });
 
-  if (!existing) return c.json({ found: false });
-
-  // Check if they're already in any org
+  // Check if they're in any org
   const { data: membership } = await db
     .from('org_members')
     .select('org_id')
-    .eq('user_id', existing.id)
+    .eq('user_id', targetUser.id)
     .eq('status', 'active')
     .maybeSingle();
 
   return c.json({
     found:    true,
-    name:     existing.name,
-    sameOrg:  membership?.org_id === c.get('user').orgId,
-    otherOrg: !!membership && membership.org_id !== c.get('user').orgId,
+    name:     targetUser.name,
+    sameOrg:  membership?.org_id === user.orgId,
+    otherOrg: !!membership && membership.org_id !== user.orgId,
   });
 });
 
-// POST /members/invite — invite a co-organizer (creates account only if needed)
+// POST /members/invite — add an existing phone-verified user as co-organizer
 membersRouter.post('/invite', zValidator('json', inviteSchema), async (c) => {
   const user = c.get('user');
-  const { email, role, name, password } = c.req.valid('json');
+  const { phone, role } = c.req.valid('json');
 
-  // Block super admins from being added as org members
-  const { data: isSuperAdmin } = await db.from('super_admins').select('id').eq('email', email).maybeSingle();
-  if (isSuperAdmin) return c.json({ error: 'Super admins cannot be added as org members' }, 400);
-
-  const { data: userForEmail } = await db
+  const { data: targetUser } = await db
     .from('users')
-    .select('id, name')
-    .eq('email', email)
+    .select('id, name, mobile_verified')
+    .eq('mobile', phone)
     .maybeSingle();
 
-  let userId: string;
-  let resolvedName: string;
-
-  if (userForEmail) {
-    // Existing user — no password needed
-    const { data: alreadyMember } = await db
-      .from('org_members')
-      .select('id')
-      .eq('user_id', userForEmail.id)
-      .eq('org_id', user.orgId!)
-      .maybeSingle();
-    if (alreadyMember) return c.json({ error: 'This person is already a member of your organisation' }, 409);
-
-    const { data: otherOrg } = await db
-      .from('org_members')
-      .select('id')
-      .eq('user_id', userForEmail.id)
-      .eq('status', 'active')
-      .maybeSingle();
-    if (otherOrg) return c.json({ error: 'This user already belongs to another organisation' }, 409);
-
-    userId = userForEmail.id;
-    resolvedName = userForEmail.name;
-  } else {
-    // New user — name + password required
-    if (!name || !password) {
-      return c.json({ error: 'Name and password are required for new users' }, 400);
-    }
-
-    const { data: authData, error: authError } = await db.auth.admin.createUser({
-      email,
-      password,
-      user_metadata: { name },
-      email_confirm: true,
-    });
-    if (authError || !authData?.user) return c.json({ error: 'Failed to create user account' }, 500);
-    userId = authData.user.id;
-    resolvedName = name;
-
-    const { data: existingProfile } = await db.from('users').select('id').eq('id', userId).maybeSingle();
-    if (!existingProfile) {
-      const { error: profileError } = await db.from('users').insert({ id: userId, name, email });
-      if (profileError) {
-        await db.auth.admin.deleteUser(userId);
-        return c.json({ error: 'Failed to create user profile' }, 500);
-      }
-    }
+  if (!targetUser) {
+    return c.json({ error: 'No Entriq account found with this phone number. Ask them to sign up first.' }, 404);
   }
+  if (!targetUser.mobile_verified) {
+    return c.json({ error: 'This user has not verified their phone number yet.' }, 400);
+  }
+
+  const { data: alreadyMember } = await db
+    .from('org_members')
+    .select('id')
+    .eq('user_id', targetUser.id)
+    .eq('org_id', user.orgId!)
+    .maybeSingle();
+  if (alreadyMember) return c.json({ error: 'This person is already a member of your organisation' }, 409);
+
+  const { data: otherOrg } = await db
+    .from('org_members')
+    .select('id')
+    .eq('user_id', targetUser.id)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (otherOrg) return c.json({ error: 'This user already belongs to another organisation' }, 409);
 
   const { data: member, error: memberError } = await db
     .from('org_members')
-    .insert({ user_id: userId, org_id: user.orgId!, role, status: 'active', invited_by: user.memberId! })
+    .insert({ user_id: targetUser.id, org_id: user.orgId!, role, status: 'active', invited_by: user.memberId! })
     .select('id, role, status, created_at')
     .single();
 
@@ -176,7 +131,7 @@ membersRouter.post('/invite', zValidator('json', inviteSchema), async (c) => {
     return c.json({ error: 'Failed to create member' }, 500);
   }
 
-  return c.json({ id: member.id, name: resolvedName, email, role: member.role, status: member.status, created_at: member.created_at }, 201);
+  return c.json({ id: member.id, name: targetUser.name, mobile: phone, role: member.role, status: member.status, created_at: member.created_at }, 201);
 });
 
 // PATCH /members/:id — update member status
@@ -231,3 +186,5 @@ membersRouter.delete('/:id', async (c) => {
   if (error) return c.json({ error: 'Failed to remove member' }, 500);
   return c.json({ ok: true });
 });
+
+

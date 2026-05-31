@@ -11,13 +11,15 @@ export type OrgStatus  = 'pending' | 'approved' | 'rejected' | 'suspended';
 export interface UserInfo {
   id:        string;
   name:      string;
-  email:     string;
+  email?:    string;
+  mobile?:   string;
   // Org member fields (optional)
   memberId?:  string;
   role?:      MemberRole;
   orgId?:     string;
   orgName?:   string;
   orgStatus?: OrgStatus;
+  isEventMember?: boolean;
 }
 
 interface AuthState {

@@ -4,6 +4,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { db } from '../services/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roles.js';
@@ -70,7 +71,7 @@ userRouter.patch(
 
     // Re-issue JWT with updated name
     const payload = {
-      sub: user.sub, email: user.email, name,
+      sub: user.sub, email: user.email, mobile: user.mobile, name,
       ...(user.memberId && {
         memberId: user.memberId, role: user.role,
         orgId: user.orgId, orgName: user.orgName, orgStatus: user.orgStatus,
@@ -89,7 +90,7 @@ userRouter.patch(
 
     const res: AuthResponse = {
       token, refreshToken,
-      user: { id: user.sub, email: user.email, name, ...(user.memberId && {
+      user: { id: user.sub, email: user.email, mobile: user.mobile, name, ...(user.memberId && {
         memberId: user.memberId, role: user.role as 'admin',
         orgId: user.orgId, orgName: user.orgName, orgStatus: user.orgStatus as OrgStatus,
       })},
@@ -99,7 +100,7 @@ userRouter.patch(
   }
 );
 
-// PATCH /user/password — change password via Supabase admin
+// PATCH /user/password — change password using bcrypt
 userRouter.patch(
   '/password',
   authMiddleware,
@@ -111,21 +112,21 @@ userRouter.patch(
     const user = c.get('user');
     const { currentPassword, newPassword } = c.req.valid('json');
 
-    // Verify current password by attempting a sign-in
-    const { error: signInErr } = await db.auth.signInWithPassword({
-      email: user.email,
-      password: currentPassword,
-    });
-    if (signInErr) return c.json({ error: 'Current password is incorrect' }, 400);
+    const { data: dbUser } = await db
+      .from('users')
+      .select('id, password_hash')
+      .eq('id', user.sub)
+      .maybeSingle();
 
-    // Update via admin API
-    const { error: updateErr } = await db.auth.admin.updateUserById(user.sub, {
-      password: newPassword,
-    });
-    if (updateErr) {
-      console.error('[user/password]', updateErr);
-      return c.json({ error: 'Failed to update password' }, 500);
+    if (!dbUser || !dbUser.password_hash) {
+      return c.json({ error: 'Account not found or no password set' }, 404);
     }
+
+    const match = await bcrypt.compare(currentPassword, dbUser.password_hash);
+    if (!match) return c.json({ error: 'Current password is incorrect' }, 400);
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await db.from('users').update({ password_hash: newHash }).eq('id', user.sub);
 
     return c.json({ ok: true });
   }
@@ -172,7 +173,7 @@ userRouter.patch(
     // Re-issue JWT with updated orgName
     const newOrgName = body.orgName ?? user.orgName;
     const payload = {
-      sub: user.sub, email: user.email, name: user.name,
+      sub: user.sub, email: user.email, mobile: user.mobile, name: user.name,
       memberId: user.memberId, role: user.role,
       orgId: user.orgId, orgName: newOrgName, orgStatus: user.orgStatus,
     };
@@ -190,7 +191,7 @@ userRouter.patch(
     const res: AuthResponse = {
       token, refreshToken,
       user: {
-        id: user.sub, email: user.email, name: user.name,
+        id: user.sub, email: user.email, mobile: user.mobile, name: user.name,
         memberId: user.memberId, role: user.role as 'admin',
         orgId: user.orgId, orgName: newOrgName, orgStatus: user.orgStatus as OrgStatus,
       },
@@ -237,22 +238,24 @@ userRouter.post(
   authMiddleware,
   zValidator('json', z.object({
     orgName:      z.string().min(2).max(100).trim(),
-    contactEmail: z.string().email().toLowerCase().trim(),
+    contactEmail: z.string().email().toLowerCase().trim().optional(),
   })),
   async (c) => {
-    const { sub: userId, email, name } = c.get('user');
+    const { sub: userId, email, mobile, name } = c.get('user');
     const { orgName, contactEmail }    = c.req.valid('json');
 
     const { data: existing } = await db
       .from('org_members').select('id').eq('user_id', userId).eq('status', 'active').maybeSingle();
     if (existing) return c.json({ error: 'You already belong to an organisation' }, 409);
 
-    const { data: emailTaken } = await db
-      .from('orgs').select('id').eq('email', contactEmail).maybeSingle();
-    if (emailTaken) return c.json({ error: 'An organisation with this contact email already exists' }, 409);
+    if (contactEmail) {
+      const { data: emailTaken } = await db
+        .from('orgs').select('id').eq('email', contactEmail).maybeSingle();
+      if (emailTaken) return c.json({ error: 'An organisation with this contact email already exists' }, 409);
+    }
 
     const { data: org, error: orgErr } = await db
-      .from('orgs').insert({ name: orgName, email: contactEmail, status: 'pending' })
+      .from('orgs').insert({ name: orgName, email: contactEmail ?? null, status: 'pending' })
       .select('id, name, status').single();
     if (orgErr || !org) {
       console.error('[user/create-org] org insert', orgErr);
@@ -269,7 +272,7 @@ userRouter.post(
     }
 
     const payload = {
-      sub: userId, email, name,
+      sub: userId, email, mobile, name,
       memberId: member.id, role: member.role,
       orgId: org.id, orgName: org.name, orgStatus: org.status as OrgStatus,
     };
@@ -287,7 +290,7 @@ userRouter.post(
     const res: AuthResponse = {
       token, refreshToken,
       user: {
-        id: userId, email, name,
+        id: userId, email, mobile, name,
         memberId: member.id, role: member.role as 'admin',
         orgId: org.id, orgName: org.name, orgStatus: org.status as OrgStatus,
       },
@@ -296,5 +299,3 @@ userRouter.post(
     return c.json(res, 201);
   }
 );
-
-

@@ -7,19 +7,16 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import bcrypt from 'bcryptjs';
 import { db } from '../services/db.js';
-import { anonDb } from '../services/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireRole, requireEventAccess } from '../middleware/roles.js';
 import type { AppEnv } from '../types/index.js';
 
+const phoneSchema = z.string().trim().regex(/^\d{10}$/, 'Enter a valid 10-digit phone number');
+
 const assignSchema = z.object({
-  email: z.string().email(),
+  phone: phoneSchema,
   role:  z.enum(['co_organizer', 'scanner', 'leader']).default('co_organizer'),
-  // New user fields (optional — only needed if user doesn't exist yet)
-  name:     z.string().min(2).max(100).trim().optional(),
-  password: z.string().min(8).max(100).optional(),
 });
 
 export const eventMembersRouter = new Hono<AppEnv>();
@@ -45,7 +42,7 @@ eventMembersRouter.get('/', requireRole('co_organizer', 'admin'), requireEventAc
     .from('event_members')
     .select(`
       id, role, created_at,
-      users ( id, name, email )
+      users ( id, name, mobile )
     `)
     .eq('event_id', eventId)
     .order('created_at', { ascending: true });
@@ -61,38 +58,35 @@ eventMembersRouter.get('/', requireRole('co_organizer', 'admin'), requireEventAc
       role:       m.role,
       created_at: m.created_at,
       user: {
-        id:    (m.users as any)?.id,
-        name:  (m.users as any)?.name,
-        email: (m.users as any)?.email,
+        id:     (m.users as any)?.id,
+        name:   (m.users as any)?.name,
+        mobile: (m.users as any)?.mobile,
       },
     }))
   );
 });
 
-// ─── GET /events/:id/members/lookup — check if email can be assigned ──────────
+// ─── GET /events/:id/members/lookup — check if phone number can be assigned ───
 eventMembersRouter.get('/lookup', requireRole('admin'), async (c) => {
   const params = c.req.param() as { id: string; memberId?: string }; const eventId = params.id;
   const user  = c.get('user');
-  const email = c.req.query('email');
+  const phone = c.req.query('phone');
 
-  if (!email) return c.json({ error: 'email query param required' }, 400);
+  if (!phone || !/^\d{10}$/.test(phone)) return c.json({ error: 'phone query param required (10 digits)' }, 400);
 
   // Must belong to org
   const { data: event } = await db
     .from('events').select('id').eq('id', eventId).eq('org_id', user.orgId!).maybeSingle();
   if (!event) return c.json({ error: 'Event not found' }, 404);
 
-  // Is super admin?
-  const { data: sa } = await db.from('super_admins').select('id').eq('email', email).maybeSingle();
-  if (sa) return c.json({ found: true, isSuperAdmin: true });
-
-  // Does user exist?
+  // Does user exist with this phone?
   const { data: existingUser } = await db
-    .from('users').select('id, name, email').eq('email', email).maybeSingle();
+    .from('users').select('id, name, mobile_verified').eq('mobile', phone).maybeSingle();
 
   if (!existingUser) return c.json({ found: false });
+  if (!existingUser.mobile_verified) return c.json({ found: true, unverified: true });
 
-  // Is user an org member?
+  // Is user an org member of a DIFFERENT org?
   const { data: orgMembership } = await db
     .from('org_members').select('id, org_id').eq('user_id', existingUser.id).maybeSingle();
 
@@ -110,62 +104,33 @@ eventMembersRouter.get('/lookup', requireRole('admin'), async (c) => {
 
   if (eventMembership) return c.json({ found: true, alreadyAssigned: true, name: existingUser.name });
 
-  // Is an org member of our org? Fine to assign.
   const inOurOrg = orgMembership?.org_id === user.orgId;
-
-  return c.json({
-    found:    true,
-    name:     existingUser.name,
-    inOurOrg,
-  });
+  return c.json({ found: true, name: existingUser.name, inOurOrg });
 });
 
-// ─── POST /events/:id/members — assign a user to this event ──────────────────
+// ─── POST /events/:id/members — assign an existing user to this event ─────────
 eventMembersRouter.post('/', requireRole('admin'), zValidator('json', assignSchema), async (c) => {
   const params = c.req.param() as { id: string; memberId?: string }; const eventId = params.id;
   const user = c.get('user');
-  const { email, role, name, password } = c.req.valid('json');
+  const { phone, role } = c.req.valid('json');
 
   // Verify event belongs to org
   const { data: event } = await db
     .from('events').select('id').eq('id', eventId).eq('org_id', user.orgId!).maybeSingle();
   if (!event) return c.json({ error: 'Event not found' }, 404);
 
-  // Block super admins from being assigned
-  const { data: sa } = await db.from('super_admins').select('id').eq('email', email).maybeSingle();
-  if (sa) return c.json({ error: 'Super admin accounts cannot be assigned as event members' }, 400);
+  // Find user by phone — must already have an account
+  const { data: targetUser } = await db
+    .from('users')
+    .select('id, mobile_verified')
+    .eq('mobile', phone)
+    .maybeSingle();
 
-  // Find or create user
-  let targetUser: { id: string } | null = null;
-  const { data: existing } = await db.from('users').select('id').eq('email', email).maybeSingle();
-
-  if (existing) {
-    targetUser = existing;
-  } else {
-    // Create new user via Supabase Auth
-    if (!name || !password) {
-      return c.json({ error: 'name and password are required to create a new user' }, 400);
-    }
-    const { data: created, error: createErr } = await anonDb.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: name } },
-    });
-    if (createErr || !created.user) {
-      console.error('[event-members/create-user]', createErr);
-      return c.json({ error: createErr?.message ?? 'Failed to create user' }, 500);
-    }
-    // Insert into public.users (trigger may also do this, but ensure it exists)
-    const { data: newProfile, error: profileErr } = await db
-      .from('users')
-      .upsert({ id: created.user.id, email, name }, { onConflict: 'id' })
-      .select('id')
-      .single();
-    if (profileErr || !newProfile) {
-      console.error('[event-members/profile]', profileErr);
-      return c.json({ error: 'User created but profile setup failed' }, 500);
-    }
-    targetUser = newProfile;
+  if (!targetUser) {
+    return c.json({ error: 'No Entriq account found with this phone number. Ask them to sign up first.' }, 404);
+  }
+  if (!targetUser.mobile_verified) {
+    return c.json({ error: 'This user has not verified their phone number yet.' }, 400);
   }
 
   // Check if already an org member of a DIFFERENT org — cannot assign
@@ -200,9 +165,8 @@ eventMembersRouter.post('/', requireRole('admin'), zValidator('json', assignSche
     return c.json({ error: 'Failed to assign member' }, 500);
   }
 
-  // Fetch user details for response
   const { data: userDetails } = await db
-    .from('users').select('id, name, email').eq('id', targetUser.id).single();
+    .from('users').select('id, name, mobile').eq('id', targetUser.id).single();
 
   return c.json({
     id:         assignment.id,

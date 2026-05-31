@@ -12,17 +12,20 @@ export type MemberStatus       = 'active' | 'inactive';
 // ─── Database row types ───────────────────────────────────────────────────────
 
 export interface User {
-  id:            string;
-  name:          string;
-  email:         string;
-  password_hash: string;
-  created_at:    string;
+  id:                  string;
+  name:                string;
+  email:               string | null;
+  mobile:              string | null;
+  mobile_verified:     boolean;
+  mobile_verified_at:  string | null;
+  password_hash:       string | null;
+  created_at:          string;
 }
 
 export interface Org {
   id:               string;
   name:             string;
-  email:            string;
+  email:            string | null;
   status:           OrgStatus;
   rejection_reason: string | null;
   created_at:       string;
@@ -64,7 +67,7 @@ export interface Registration {
   id:                   string;
   event_id:             string;
   user_id:              string;
-  email:                string;
+  email:                string | null;
   name:                 string;
   surname:              string;
   state:                string;
@@ -92,16 +95,15 @@ export interface Checkin {
 // ─── JWT Payload ──────────────────────────────────────────────────────────────
 
 export interface JWTPayload {
-  sub:        string;      // users.id (or super_admins.id for super admin tokens)
-  email:      string;
+  sub:        string;
+  email?:     string;
+  mobile?:    string;
   name:       string;
-  // Org member fields — present only if user has an org role
-  memberId?:  string;      // org_members.id (absent for event-only members)
+  memberId?:  string;
   role?:      MemberRole | 'leader' | 'scanner' | 'super_admin';
   orgId?:     string;
   orgName?:   string;
   orgStatus?: OrgStatus;
-  // Set to true when access is via event_members only (not org_members)
   isEventMember?: boolean;
   iat?:       number;
   exp?:       number;
@@ -111,19 +113,21 @@ export interface JWTPayload {
 
 export interface UserSignupRequest {
   name:     string;
-  email:    string;
+  phone:    string;
   password: string;
+  otp:      string;
 }
 
 export interface OrgSignupRequest {
   orgName:   string;
   adminName: string;
-  email:     string;
+  phone:     string;
   password:  string;
+  otp:       string;
 }
 
 export interface LoginRequest {
-  email:    string;
+  phone:    string;
   password: string;
 }
 
@@ -133,10 +137,8 @@ export interface SuperAdminLoginRequest {
 }
 
 export interface InviteMemberRequest {
-  name:     string;
-  email:    string;
-  password: string;
-  role:     MemberRole;
+  phone: string;
+  role:  MemberRole;
 }
 
 export interface UpdateOrgStatusRequest {
@@ -187,8 +189,8 @@ export interface AuthResponse {
   user: {
     id:        string;
     name:      string;
-    email:     string;
-    // Org member fields — present if user is an org member
+    email?:    string;
+    mobile?:   string;
     memberId?:    string;
     role?:        MemberRole;
     orgId?:       string;

@@ -38,7 +38,7 @@ export function NavBar() {
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex flex-col items-end">
                 <span className="text-xs font-medium text-zinc-200">{user.name}</span>
-                <span className="text-[11px] text-zinc-500">{user.orgName ?? user.email}</span>
+                <span className="text-[11px] text-zinc-500">{user.orgName ?? (user.mobile ? `+91 ${user.mobile}` : user.email)}</span>
               </div>
               <Button size="sm" asChild className="bg-violet-600 hover:bg-violet-500 text-white">
                 <Link href="/dashboard">

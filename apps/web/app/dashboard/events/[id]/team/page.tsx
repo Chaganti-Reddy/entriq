@@ -10,13 +10,12 @@ import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   UserPlus, Trash2, ArrowLeft, Loader2, Search, User,
-  UserCheck, CheckCircle2, X, ScanLine, ShieldCheck, Mail, Star,
+  UserCheck, CheckCircle2, X, ScanLine, ShieldCheck, Phone, Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PasswordInput } from '@/components/ui/password-input';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -30,13 +29,13 @@ interface EventMember {
   id: string;
   role: 'co_organizer' | 'scanner' | 'leader';
   created_at: string;
-  user: { id: string; name: string; email: string };
+  user: { id: string; name: string; mobile?: string };
 }
 
 interface LookupResult {
   found: boolean;
   name?: string;
-  isSuperAdmin?: boolean;
+  unverified?: boolean;
   alreadyAssigned?: boolean;
   otherOrg?: boolean;
   inOurOrg?: boolean;
@@ -50,12 +49,10 @@ export default function EventTeamPage() {
   const qc = useQueryClient();
 
   const [panelOpen, setPanelOpen]   = useState(false);
-  const [email, setEmail]           = useState('');
+  const [phone, setPhone]           = useState('');
   const [role, setRole] = useState<'co_organizer' | 'scanner' | 'leader'>('co_organizer');
   const [lookup, setLookup]         = useState<LookupResult | null>(null);
   const [checking, setChecking]     = useState(false);
-  const [newName, setNewName]       = useState('');
-  const [newPassword, setNewPassword] = useState('');
 
   // Demotion warning state
   const [demoteWarning, setDemoteWarning] = useState<{
@@ -77,7 +74,7 @@ export default function EventTeamPage() {
 
   // ── Mutations ──
   const assignMutation = useMutation({
-    mutationFn: (payload: { email: string; role: string; name?: string; password?: string }) =>
+    mutationFn: (payload: { phone: string; role: string }) =>
       api.post(`/events/${id}/members`, payload),
     onSuccess: () => {
       toast.success('Member assigned to event!');
@@ -117,9 +114,8 @@ export default function EventTeamPage() {
 
   // ── Helpers ──
   function closePanel() {
-    setPanelOpen(false); setEmail(''); setLookup(null);
-    setNewName(''); setNewPassword(''); setChecking(false);
-    setRole('co_organizer');
+    setPanelOpen(false); setPhone(''); setLookup(null);
+    setChecking(false); setRole('co_organizer');
   }
 
   async function handleRoleChange(member: EventMember, newRole: 'co_organizer' | 'scanner' | 'leader') {
@@ -146,12 +142,12 @@ export default function EventTeamPage() {
   }
 
   async function handleLookup() {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast.error('Enter a valid email'); return;
+    if (!/^\d{10}$/.test(phone)) {
+      toast.error('Enter a valid 10-digit mobile number'); return;
     }
     setChecking(true);
     try {
-      const { data } = await api.get<LookupResult>(`/events/${id}/members/lookup?email=${encodeURIComponent(email)}`);
+      const { data } = await api.get<LookupResult>(`/events/${id}/members/lookup?phone=${encodeURIComponent(phone)}`);
       setLookup(data);
     } catch {
       toast.error('Lookup failed. Try again.');
@@ -161,12 +157,8 @@ export default function EventTeamPage() {
   }
 
   function handleAssign() {
-    if (lookup?.found && !lookup.isSuperAdmin && !lookup.alreadyAssigned && !lookup.otherOrg) {
-      assignMutation.mutate({ email, role });
-    } else if (lookup && !lookup.found) {
-      if (!newName.trim() || newName.trim().length < 2) { toast.error('Enter a valid name'); return; }
-      if (!newPassword || newPassword.length < 8) { toast.error('Password must be at least 8 characters'); return; }
-      assignMutation.mutate({ email, role, name: newName.trim(), password: newPassword });
+    if (lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.otherOrg) {
+      assignMutation.mutate({ phone, role });
     }
   }
 
@@ -241,26 +233,31 @@ export default function EventTeamPage() {
             </p>
           )}
 
-          {/* Step 1 — email check */}
+          {/* Step 1 — phone check */}
           {!lookup && (
             <div className="flex gap-2">
               <div className="flex-1">
-                <Label htmlFor="assign-email">Email address</Label>
-                <Input
-                  id="assign-email"
-                  type="email"
-                  className="mt-1.5"
-                  placeholder="jane@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
-                  autoFocus
-                />
+                <Label htmlFor="assign-phone">Mobile number</Label>
+                <div className="flex mt-1.5">
+                  <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-zinc-700 bg-zinc-800 text-zinc-400 text-sm select-none">+91</span>
+                  <Input
+                    id="assign-phone"
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    className="rounded-l-none"
+                    placeholder="98765 43210"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
+                    autoFocus
+                  />
+                </div>
               </div>
               <div className="flex items-end">
                 <Button onClick={handleLookup} disabled={checking}>
                   {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                  {checking ? 'Checking…' : 'Check'}
+                  {checking ? 'Checking...' : 'Check'}
                 </Button>
               </div>
             </div>
@@ -269,15 +266,15 @@ export default function EventTeamPage() {
           {/* Already assigned */}
           {lookup?.alreadyAssigned && (
             <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
-              <p className="text-sm text-yellow-300">⚠️ <strong>{lookup.name}</strong> is already assigned to this event.</p>
+              <p className="text-sm text-yellow-300">&#9888; <strong>{lookup.name}</strong> is already assigned to this event.</p>
               <Button variant="ghost" size="sm" className="mt-3" onClick={closePanel}>Close</Button>
             </div>
           )}
 
-          {/* Super admin */}
-          {lookup?.isSuperAdmin && (
-            <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4">
-              <p className="text-sm text-violet-300">⚡ Super Admin accounts cannot be assigned as event members.</p>
+          {/* Unverified phone */}
+          {lookup?.unverified && (
+            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
+              <p className="text-sm text-yellow-300">&#9888; This user has not verified their phone number yet. Ask them to complete verification at entriq.app/verify-phone.</p>
               <Button variant="ghost" size="sm" className="mt-3" onClick={closePanel}>Close</Button>
             </div>
           )}
@@ -285,23 +282,29 @@ export default function EventTeamPage() {
           {/* Other org */}
           {lookup?.otherOrg && (
             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
-              <p className="text-sm text-red-300">⚠️ This user belongs to another organisation.</p>
+              <p className="text-sm text-red-300">&#9888; This user belongs to another organisation.</p>
+              <Button variant="ghost" size="sm" className="mt-3" onClick={closePanel}>Close</Button>
+            </div>
+          )}
+
+          {/* Not found */}
+          {lookup && !lookup.found && (
+            <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4">
+              <p className="text-sm text-zinc-300">No Entriq account found for +91 {phone}. Ask them to sign up at entriq.app first.</p>
               <Button variant="ghost" size="sm" className="mt-3" onClick={closePanel}>Close</Button>
             </div>
           )}
 
           {/* Existing user — assign directly */}
-          {lookup?.found && !lookup.isSuperAdmin && !lookup.alreadyAssigned && !lookup.otherOrg && (
+          {lookup?.found && !lookup.unverified && !lookup.alreadyAssigned && !lookup.otherOrg && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 bg-green-500/5 border border-green-500/20 rounded-xl p-4">
                 <UserCheck className="w-5 h-5 text-green-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-zinc-100">{lookup.name}</p>
-                  <p className="text-xs text-zinc-400">
-                    {email}
-                    {lookup.inOurOrg
-                      ? ' · Org member'
-                      : ' · Has an Entriq account'}
+                  <p className="text-xs text-zinc-400 flex items-center gap-1">
+                    <Phone className="w-3 h-3" />+91 {phone}
+                    {lookup.inOurOrg ? ' · Org member' : ' · Has an Entriq account'}
                   </p>
                 </div>
                 <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
@@ -310,36 +313,6 @@ export default function EventTeamPage() {
                 <Button onClick={handleAssign} disabled={assignMutation.isPending}>
                   {assignMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                   Assign to event
-                </Button>
-                <Button variant="ghost" size="sm" onClick={closePanel}>Cancel</Button>
-              </div>
-            </div>
-          )}
-
-          {/* New user — create account */}
-          {lookup && !lookup.found && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 bg-zinc-800/50 border border-zinc-700 rounded-xl p-3">
-                <User className="w-4 h-4 text-zinc-500 shrink-0" />
-                <p className="text-sm text-zinc-400">
-                  <span className="text-zinc-200">{email}</span> doesn&apos;t have an account yet.
-                  A new account will be created.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="new-name">Full name *</Label>
-                  <Input id="new-name" className="mt-1.5" placeholder="Jane Doe" value={newName} onChange={(e) => setNewName(e.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="new-password">Temporary password *</Label>
-                  <PasswordInput id="new-password" className="mt-1.5" placeholder="Min 8 characters" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <Button onClick={handleAssign} disabled={assignMutation.isPending}>
-                  {assignMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Create &amp; assign
                 </Button>
                 <Button variant="ghost" size="sm" onClick={closePanel}>Cancel</Button>
               </div>
@@ -381,7 +354,7 @@ export default function EventTeamPage() {
                       </div>
                       <div>
                         <p className="text-zinc-200 font-medium">{m.user.name}</p>
-                        <p className="text-zinc-500 text-xs flex items-center gap-1"><Mail className="w-3 h-3" />{m.user.email}</p>
+                        <p className="text-zinc-500 text-xs flex items-center gap-1"><Phone className="w-3 h-3" />{(m.user as any).mobile ? `+91 ${(m.user as any).mobile}` : 'No phone'}</p>
                       </div>
                     </div>
                   </td>

@@ -1,5 +1,5 @@
 // apps/web/app/dashboard/team/page.tsx
-// Team management — Admin only. Smart invite: email check first, then add/create.
+// Team management — Admin only. Phone-first invite: lookup by phone, only existing verified accounts.
 
 'use client';
 
@@ -8,24 +8,23 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   UserPlus, Trash2, ShieldCheck, ShieldOff, Loader2,
-  Mail, User, Search, CheckCircle2, UserCheck, X,
+  Phone, User, Search, CheckCircle2, UserCheck, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PasswordInput } from '@/components/ui/password-input';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/lib/api';
 
 interface Member {
-  id: string; name: string; email: string;
+  id: string; name: string; mobile: string;
   role: 'admin' | 'co_organizer'; status: 'active' | 'inactive'; created_at: string;
 }
 
 interface LookupResult {
-  found: boolean; name?: string; sameOrg?: boolean; otherOrg?: boolean; isSuperAdmin?: boolean;
+  found: boolean; name?: string; sameOrg?: boolean; otherOrg?: boolean; unverified?: boolean;
 }
 
 export default function TeamPage() {
@@ -33,12 +32,10 @@ export default function TeamPage() {
   const { user } = useAuthStore();
   const qc       = useQueryClient();
 
-  const [inviteOpen, setInviteOpen]     = useState(false);
-  const [email, setEmail]               = useState('');
-  const [lookup, setLookup]             = useState<LookupResult | null>(null);
-  const [checking, setChecking]         = useState(false);
-  const [newName, setNewName]           = useState('');
-  const [newPassword, setNewPassword]   = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [phone, setPhone]           = useState('');
+  const [lookup, setLookup]         = useState<LookupResult | null>(null);
+  const [checking, setChecking]     = useState(false);
 
   if (user && user.role !== 'admin') {
     router.replace('/dashboard');
@@ -51,10 +48,9 @@ export default function TeamPage() {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: (payload: { email: string; name?: string; password?: string }) =>
-      api.post('/members/invite', { ...payload, role: 'co_organizer' }),
+    mutationFn: () => api.post('/members/invite', { phone, role: 'co_organizer' }),
     onSuccess: () => {
-      toast.success(`${email} added to team!`);
+      toast.success(`+91 ${phone} added to team!`);
       qc.invalidateQueries({ queryKey: ['team-members'] });
       closeInvite();
     },
@@ -78,32 +74,19 @@ export default function TeamPage() {
   });
 
   function closeInvite() {
-    setInviteOpen(false); setEmail(''); setLookup(null);
-    setNewName(''); setNewPassword(''); setChecking(false);
+    setInviteOpen(false); setPhone(''); setLookup(null); setChecking(false);
   }
 
-  async function handleEmailCheck() {
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast.error('Enter a valid email address'); return;
-    }
+  async function handlePhoneCheck() {
+    if (!/^\d{10}$/.test(phone)) { toast.error('Enter a valid 10-digit mobile number'); return; }
     setChecking(true);
     try {
-      const { data } = await api.get<LookupResult>(`/members/lookup?email=${encodeURIComponent(email)}`);
+      const { data } = await api.get<LookupResult>(`/members/lookup?phone=${encodeURIComponent(phone)}`);
       setLookup(data);
     } catch {
       toast.error('Lookup failed. Try again.');
     } finally {
       setChecking(false);
-    }
-  }
-
-  function handleInvite() {
-    if (lookup?.found) {
-      inviteMutation.mutate({ email });
-    } else {
-      if (!newName.trim() || newName.trim().length < 2) { toast.error('Enter a valid name'); return; }
-      if (!newPassword || newPassword.length < 8) { toast.error('Password must be at least 8 characters'); return; }
-      inviteMutation.mutate({ email, name: newName.trim(), password: newPassword });
     }
   }
 
@@ -114,7 +97,7 @@ export default function TeamPage() {
         subtitle="Manage org-wide admins and co-organizers. For per-event teams, open an event and click Team."
         actions={
           <Button size="sm" onClick={() => setInviteOpen(true)}>
-            <UserPlus className="w-4 h-4" /> Invite co-organizer
+            <UserPlus className="w-4 h-4" /> Add co-organizer
           </Button>
         }
       />
@@ -123,51 +106,58 @@ export default function TeamPage() {
       {inviteOpen && (
         <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-2xl p-6 animate-fade-in">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-zinc-200">Invite co-organizer</h3>
+            <h3 className="text-sm font-semibold text-zinc-200">Add co-organizer</h3>
             <button onClick={closeInvite} className="text-zinc-500 hover:text-zinc-300 transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Step 1: email */}
+          {/* Step 1: phone lookup */}
           {!lookup && (
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <Label htmlFor="invite-email">Email address</Label>
-                <Input
-                  id="invite-email"
-                  type="email"
-                  className="mt-1.5"
-                  placeholder="jane@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleEmailCheck()}
-                  autoFocus
-                />
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="invite-phone">Mobile number</Label>
+                <div className="flex gap-2 mt-1.5">
+                  <div className="flex flex-1">
+                    <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-zinc-700 bg-zinc-800 text-zinc-400 text-sm select-none">
+                      +91
+                    </span>
+                    <Input
+                      id="invite-phone"
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
+                      className="rounded-l-none"
+                      placeholder="98765 43210"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      onKeyDown={(e) => e.key === 'Enter' && handlePhoneCheck()}
+                      autoFocus
+                    />
+                  </div>
+                  <Button onClick={handlePhoneCheck} disabled={checking || phone.length !== 10}>
+                    {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                    {checking ? 'Checking…' : 'Check'}
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-end">
-                <Button onClick={handleEmailCheck} disabled={checking} className="mb-0">
-                  {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                  {checking ? 'Checking…' : 'Check'}
-                </Button>
-              </div>
+              <p className="text-xs text-zinc-600">The person must already have an Entriq account with a verified phone number.</p>
             </div>
           )}
 
-          {/* Step 2a: existing user found */}
-          {lookup?.found && !lookup.sameOrg && !lookup.otherOrg && !lookup.isSuperAdmin && (
+          {/* Found — can add */}
+          {lookup?.found && !lookup.sameOrg && !lookup.otherOrg && !lookup.unverified && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 bg-green-500/5 border border-green-500/20 rounded-xl p-4">
                 <UserCheck className="w-5 h-5 text-green-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-zinc-100">{lookup.name}</p>
-                  <p className="text-xs text-zinc-400">{email} · Already has an Entriq account</p>
+                  <p className="text-xs text-zinc-400">+91 {phone} · Verified Entriq account</p>
                 </div>
                 <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
               </div>
-              <p className="text-xs text-zinc-500">No password needed — they'll use their existing account.</p>
               <div className="flex gap-3">
-                <Button onClick={handleInvite} disabled={inviteMutation.isPending}>
+                <Button onClick={() => inviteMutation.mutate()} disabled={inviteMutation.isPending}>
                   {inviteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Add to team
                 </Button>
@@ -176,22 +166,15 @@ export default function TeamPage() {
             </div>
           )}
 
-          {/* Step 2e: super admin account — cannot be added */}
-          {lookup?.isSuperAdmin && (
-            <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4">
-              <p className="text-sm text-violet-300">⚡ This is a Super Admin account and cannot be added as an org member.</p>
-              <Button variant="ghost" size="sm" className="mt-3" onClick={closeInvite}>Close</Button>
-            </div>
-          )}
-
-          {/* Step 2b: existing user but already in same org */}
-          {lookup?.sameOrg && (            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
+          {/* Already in same org */}
+          {lookup?.sameOrg && (
+            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
               <p className="text-sm text-yellow-300">⚠️ This person is already in your team.</p>
               <Button variant="ghost" size="sm" className="mt-3" onClick={closeInvite}>Close</Button>
             </div>
           )}
 
-          {/* Step 2c: in another org */}
+          {/* In another org */}
           {lookup?.otherOrg && (
             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
               <p className="text-sm text-red-300">⚠️ This user already belongs to another organisation and can&apos;t be added.</p>
@@ -199,43 +182,23 @@ export default function TeamPage() {
             </div>
           )}
 
-          {/* Step 2d: new user — need name + password */}
+          {/* Phone not verified */}
+          {lookup?.found && lookup.unverified && (
+            <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4">
+              <p className="text-sm text-orange-300">⚠️ This user has not verified their phone number yet. Ask them to complete their account setup first.</p>
+              <Button variant="ghost" size="sm" className="mt-3" onClick={closeInvite}>Close</Button>
+            </div>
+          )}
+
+          {/* Not found */}
           {lookup && !lookup.found && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 bg-zinc-800/50 border border-zinc-700 rounded-xl p-3">
-                <User className="w-4 h-4 text-zinc-500 shrink-0" />
-                <p className="text-sm text-zinc-400">
-                  <span className="text-zinc-200">{email}</span> doesn&apos;t have an account yet.
-                  A new account will be created for them.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="new-name">Full name *</Label>
-                  <Input
-                    id="new-name"
-                    className="mt-1.5"
-                    placeholder="Jane Doe"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="new-password">Temporary password *</Label>
-                  <PasswordInput
-                    id="new-password"
-                    className="mt-1.5"
-                    placeholder="Min 8 characters"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <Button onClick={handleInvite} disabled={inviteMutation.isPending}>
-                  {inviteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  Create account &amp; add
-                </Button>
+            <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4">
+              <p className="text-sm text-zinc-300">
+                No account found for <strong className="text-zinc-100">+91 {phone}</strong>.
+                Ask them to sign up at Entriq first, then try again.
+              </p>
+              <div className="flex gap-3 mt-3">
+                <Button variant="ghost" size="sm" onClick={() => { setLookup(null); setPhone(''); }}>Try another number</Button>
                 <Button variant="ghost" size="sm" onClick={closeInvite}>Cancel</Button>
               </div>
             </div>
@@ -249,7 +212,7 @@ export default function TeamPage() {
       ) : members.length === 0 ? (
         <div className="text-center py-16 text-zinc-500">
           <User className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm">No team members yet. Invite a co-organizer to get started.</p>
+          <p className="text-sm">No team members yet. Add a co-organizer to get started.</p>
         </div>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
@@ -272,7 +235,10 @@ export default function TeamPage() {
                       </div>
                       <div>
                         <p className="text-zinc-200 font-medium">{m.name}</p>
-                        <p className="text-zinc-500 text-xs flex items-center gap-1"><Mail className="w-3 h-3" />{m.email}</p>
+                        <p className="text-zinc-500 text-xs flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {m.mobile ? `+91 ${m.mobile}` : '—'}
+                        </p>
                       </div>
                     </div>
                   </td>
@@ -323,3 +289,5 @@ export default function TeamPage() {
     </div>
   );
 }
+
+

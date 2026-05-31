@@ -318,7 +318,7 @@ export default function RegistrationFormPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
           <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium mb-3">Registering as</p>
           <p className="text-sm text-zinc-300"><span className="text-zinc-500">Name: </span>{user.name}</p>
-          <p className="text-sm text-zinc-300"><span className="text-zinc-500">Email: </span>{user.email}</p>
+          {user.mobile && <p className="text-sm text-zinc-300"><span className="text-zinc-500">Mobile: </span>+91 {user.mobile}</p>}
         </div>
 
         {/* Form */}

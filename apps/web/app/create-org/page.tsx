@@ -19,7 +19,7 @@ import type { AuthResponse } from '@entriq/shared';
 
 const schema = z.object({
   orgName:      z.string().min(2, 'Organisation name must be at least 2 characters').max(100).trim(),
-  contactEmail: z.string().email('Enter a valid email address'),
+  contactEmail: z.string().email('Enter a valid email address').optional().or(z.literal('')),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -114,8 +114,8 @@ export default function CreateOrgPage() {
 
             <div>
               <Label htmlFor="contactEmail">
-                Contact email *
-                <span className="text-zinc-600 font-normal ml-1">(public-facing org email)</span>
+                Contact email
+                <span className="text-zinc-600 font-normal ml-1">(optional, public-facing org email)</span>
               </Label>
               <Input
                 id="contactEmail"
@@ -127,7 +127,7 @@ export default function CreateOrgPage() {
                 {...register('contactEmail')}
               />
               {errors.contactEmail && <p className="text-xs text-red-400 mt-1">{errors.contactEmail.message}</p>}
-              <p className="text-xs text-zinc-500 mt-1">Can be the same as your account email or a dedicated org address.</p>
+              <p className="text-xs text-zinc-500 mt-1">Optional — for communications and public-facing contact info.</p>
             </div>
 
             <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-3">

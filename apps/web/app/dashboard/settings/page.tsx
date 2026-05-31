@@ -118,13 +118,13 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <Label>Email address</Label>
+              <Label>{user?.mobile ? 'Mobile number' : 'Email address'}</Label>
               <Input
                 className="mt-1.5 opacity-50 cursor-not-allowed"
-                value={user?.email ?? ''}
+                value={user?.mobile ? `+91 ${user.mobile}` : (user?.email ?? '')}
                 disabled
               />
-              <p className="text-xs text-zinc-600 mt-1">Email cannot be changed</p>
+              <p className="text-xs text-zinc-600 mt-1">{user?.mobile ? 'Mobile number cannot be changed' : 'Email cannot be changed'}</p>
             </div>
           </div>
           <Button

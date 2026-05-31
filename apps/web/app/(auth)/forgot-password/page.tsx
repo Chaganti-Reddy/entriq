@@ -1,99 +1,178 @@
 // apps/web/app/(auth)/forgot-password/page.tsx
-// Password reset via Supabase — sends a reset link to the user's email.
+// Phone-based password reset - 3 steps: enter phone, verify OTP, set new password
 'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Mail, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PasswordInput } from '@/components/ui/password-input';
+import { useAuthStore } from '@/stores/auth';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { toast } from 'sonner';
+import type { AuthResponse } from '@entriq/shared';
 
-const schema = z.object({
-  email: z.string().email('Enter a valid email address'),
-});
-type FormData = z.infer<typeof schema>;
+type Step = 'phone' | 'otp' | 'password';
 
 export default function ForgotPasswordPage() {
-  const [sent, setSent] = useState(false);
-  const [sentEmail, setSentEmail] = useState('');
+  const router  = useRouter();
+  const { setAuth } = useAuthStore();
+  const [step, setStep]     = useState<Step>('phone');
+  const [phone, setPhone]   = useState('');
+  const [otp, setOtp]       = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirm, setConfirm]         = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]     = useState('');
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
-  });
-
-  async function onSubmit(data: FormData) {
-    setLoading(true);
+  async function handleSendOtp() {
+    if (!/^\d{10}$/.test(phone)) { setError('Enter a valid 10-digit mobile number.'); return; }
     setError('');
+    setLoading(true);
     try {
-      await api.post('/auth/forgot-password', { email: data.email });
-      setSentEmail(data.email);
-      setSent(true);
+      await api.post('/auth/forgot-password', { phone });
     } catch {
-      // Always show success to prevent email enumeration
-      setSentEmail(data.email);
-      setSent(true);
+      // Always advance — prevents phone enumeration
     } finally {
       setLoading(false);
+      setStep('otp');
     }
   }
 
-  if (sent) {
-    return (
-      <div className="w-full max-w-sm animate-slide-up">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl shadow-black/50 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-green-500/10 border border-green-500/20">
-            <CheckCircle2 className="w-7 h-7 text-green-400" />
-          </div>
-          <h1 className="text-xl font-bold text-zinc-100 mb-2">Check your email</h1>
-          <p className="text-sm text-zinc-400 mb-2 leading-relaxed">
-            If an account exists for{' '}
-            <span className="text-violet-400 font-medium">{sentEmail}</span>,
-            we sent a password reset link.
-          </p>
-          <p className="text-xs text-zinc-500 mb-6">Check spam if you don't see it.</p>
-          <Button asChild className="w-full" variant="outline">
-            <Link href="/login">Back to sign in</Link>
-          </Button>
-        </div>
-      </div>
-    );
+  function handleVerifyOtp() {
+    if (otp.length !== 6) { setError('Enter the 6-digit OTP.'); return; }
+    setError('');
+    setStep('password');
   }
+
+  async function handleResetPassword() {
+    if (newPassword.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (newPassword !== confirm) { setError("Passwords don't match."); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const { data: res } = await api.post<AuthResponse>('/auth/reset-password', { phone, otp, newPassword });
+      setAuth(res.token, res.refreshToken, res.user);
+      toast.success('Password reset successfully!');
+      router.push(res.user.orgStatus === 'approved' ? '/dashboard' : '/my-events');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Reset failed.';
+      setError(msg);
+    } finally { setLoading(false); }
+  }
+
+  async function handleResend() {
+    try { await api.post('/auth/forgot-password', { phone }); toast.success('New OTP sent!'); }
+    catch { toast.error('Failed to resend.'); }
+  }
+
+  const stepLabels = ['Enter number', 'Verify OTP', 'New password'];
+  const stepIdx    = ['phone', 'otp', 'password'].indexOf(step);
 
   return (
     <div className="w-full max-w-sm animate-slide-up">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl shadow-black/50">
-        <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-violet-500/10 border border-violet-500/20">
-          <Mail className="w-5 h-5 text-violet-400" />
-        </div>
-        <h1 className="text-xl font-bold text-zinc-100 mb-1 text-center">Forgot password?</h1>
-        <p className="text-sm text-zinc-400 mb-6 text-center leading-relaxed">
-          Enter your email and we'll send a reset link.
-        </p>
 
-        {error && (
-          <div className="mb-4 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-            <p className="text-sm text-red-400">{error}</p>
-          </div>
+        {/* Step indicator */}
+        <div className="flex items-center gap-2 mb-6">
+          {stepLabels.map((label, i) => (
+            <div key={label} className="flex items-center gap-2 flex-1">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors shrink-0 ${
+                stepIdx === i ? 'bg-violet-600 text-white' :
+                stepIdx > i   ? 'bg-green-600 text-white' :
+                'bg-zinc-800 text-zinc-500'
+              }`}>{i + 1}</div>
+              {i < 2 && <div className="flex-1 h-px bg-zinc-700" />}
+            </div>
+          ))}
+        </div>
+
+        {/* Step 1 - Phone */}
+        {step === 'phone' && (
+          <>
+            <div className="mb-6">
+              <h1 className="text-xl font-bold text-zinc-100">Forgot password?</h1>
+              <p className="text-sm text-zinc-400 mt-1">Enter your registered mobile number to receive an OTP.</p>
+            </div>
+            {error && <div className="mb-4 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl"><p className="text-sm text-red-400">{error}</p></div>}
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="phone">Mobile number</Label>
+                <div className="flex mt-1.5">
+                  <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-zinc-700 bg-zinc-800 text-zinc-400 text-sm select-none">+91</span>
+                  <Input id="phone" type="tel" inputMode="numeric" maxLength={10} className="rounded-l-none" placeholder="98765 43210"
+                    value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendOtp()} autoFocus />
+                </div>
+              </div>
+              <Button className="w-full h-11" onClick={handleSendOtp} disabled={loading}>
+                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending OTP...</> : 'Send OTP'}
+              </Button>
+            </div>
+          </>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <Label htmlFor="email">Email address</Label>
-            <Input id="email" type="email" className="mt-1.5" placeholder="you@example.com"
-              error={!!errors.email} autoComplete="email" autoFocus {...register('email')} />
-            {errors.email && <p className="text-xs text-red-400 mt-1">{errors.email.message}</p>}
-          </div>
-          <Button type="submit" className="w-full h-11" disabled={loading}>
-            {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : 'Send reset link →'}
-          </Button>
-        </form>
+        {/* Step 2 - OTP */}
+        {step === 'otp' && (
+          <>
+            <div className="mb-6">
+              <h1 className="text-xl font-bold text-zinc-100">Enter OTP</h1>
+              <p className="text-sm text-zinc-400 mt-1">OTP sent to +91 {phone}. Valid for 10 minutes.</p>
+            </div>
+            {error && <div className="mb-4 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl"><p className="text-sm text-red-400">{error}</p></div>}
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="otp">6-digit OTP</Label>
+                <Input id="otp" className="mt-1.5 text-center tracking-widest text-xl font-semibold" placeholder="000000"
+                  maxLength={6} inputMode="numeric" autoFocus value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onKeyDown={(e) => e.key === 'Enter' && otp.length === 6 && handleVerifyOtp()} />
+              </div>
+              <Button className="w-full h-11" onClick={handleVerifyOtp} disabled={otp.length !== 6}>
+                Verify OTP
+              </Button>
+              <div className="flex items-center justify-between text-sm">
+                <button type="button" onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
+                  className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 transition-colors">
+                  <ArrowLeft className="w-3.5 h-3.5" /> Change number
+                </button>
+                <button type="button" onClick={handleResend} className="text-violet-400 hover:text-violet-300 transition-colors">
+                  Resend OTP
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Step 3 - New password */}
+        {step === 'password' && (
+          <>
+            <div className="mb-6">
+              <h1 className="text-xl font-bold text-zinc-100">Set new password</h1>
+              <p className="text-sm text-zinc-400 mt-1">Choose a strong password for your account.</p>
+            </div>
+            {error && <div className="mb-4 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl"><p className="text-sm text-red-400">{error}</p></div>}
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="new-pass">New password</Label>
+                <PasswordInput id="new-pass" className="mt-1.5" placeholder="Min. 8 characters" autoFocus
+                  value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="confirm-pass">Confirm password</Label>
+                <PasswordInput id="confirm-pass" className="mt-1.5"
+                  value={confirm} onChange={(e) => setConfirm(e.target.value)}
+                  onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && handleResetPassword()} />
+              </div>
+              <Button className="w-full h-11" onClick={handleResetPassword} disabled={loading}>
+                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Reset password'}
+              </Button>
+            </div>
+          </>
+        )}
 
         <div className="mt-5 text-center">
           <Link href="/login" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors">

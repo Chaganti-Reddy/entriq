@@ -135,7 +135,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </span>
             </div>
               <p className="text-sm font-medium text-zinc-100 truncate mt-0.5">{user.orgName}</p>
-              <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+              <p className="text-xs text-zinc-500 truncate">{user.mobile ? `+91 ${user.mobile}` : (user.email ?? '')}</p>
           </div>
           <button
             onClick={handleLogout}

@@ -5,7 +5,8 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { db, anonDb } from '../services/db.js';
+import bcrypt from 'bcryptjs';
+import { db } from '../services/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireSuperAdmin } from '../middleware/roles.js';
 import type { AppEnv } from '../types/index.js';
@@ -88,7 +89,7 @@ superAdminRouter.get('/orgs/:id', async (c) => {
 
   const [{ data: members }, { data: events }] = await Promise.all([
     db.from('org_members')
-      .select('id, user_id, role, status, created_at, users(name, email)')
+      .select('id, user_id, role, status, created_at, users(name, mobile)')
       .eq('org_id', id)
       .order('created_at', { ascending: true }),
     db.from('events')
@@ -98,7 +99,7 @@ superAdminRouter.get('/orgs/:id', async (c) => {
   ]);
 
   const flatMembers = (members ?? []).map((m: any) => ({
-    id: m.id, user_id: m.user_id, name: m.users?.name ?? '', email: m.users?.email ?? '',
+    id: m.id, user_id: m.user_id, name: m.users?.name ?? '', mobile: m.users?.mobile ?? '',
     role: m.role, status: m.status, created_at: m.created_at,
   }));
 
@@ -216,26 +217,20 @@ superAdminRouter.patch(
     const user = c.get('user');
     const { currentPassword, newPassword } = c.req.valid('json');
 
-    // Verify current password via Supabase Auth signIn
+    // Verify current password via bcrypt
     const { data: sa } = await db
       .from('super_admins')
-      .select('email')
+      .select('id, password_hash')
       .eq('id', user.sub)
       .maybeSingle();
-    if (!sa) return c.json({ error: 'Account not found' }, 404);
+    if (!sa || !sa.password_hash) return c.json({ error: 'Account not found' }, 404);
 
-    const { data: authData, error: authError } = await anonDb.auth.signInWithPassword({ email: sa.email, password: currentPassword });
-    if (authError || !authData.user) {
-      return c.json({ error: 'Current password is incorrect' }, 400);
-    }
+    const match = await bcrypt.compare(currentPassword, sa.password_hash);
+    if (!match) return c.json({ error: 'Current password is incorrect' }, 400);
 
-    // Update password in Supabase Auth
-    const { error: updateError } = await db.auth.admin.updateUserById(authData.user.id, {
-      password: newPassword,
-    });
-    await anonDb.auth.signOut();
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await db.from('super_admins').update({ password_hash: newHash }).eq('id', user.sub);
 
-    if (updateError) return c.json({ error: 'Failed to update password' }, 500);
     return c.json({ ok: true });
   }
 );
