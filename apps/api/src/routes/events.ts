@@ -55,9 +55,20 @@ eventsRouter.get('/public/:slug', async (c) => {
   const { data: event, error } = await db
     .from('events')
     .select('id, name, date, location, venue, is_active')
+    .eq('slug', slug)
     .maybeSingle();
 
-  if (error) return c.json({ error: 'Failed to fetch event' }, 500);
+  if (error) {
+    // Fallback: retry without venue column in case migration hasn't run yet
+    if (error.message?.includes('venue')) {
+      const { data: fallback, error: e2 } = await db
+        .from('events').select('id, name, date, location, is_active').eq('slug', slug).maybeSingle();
+      if (e2) return c.json({ error: 'Failed to fetch event' }, 500);
+      if (!fallback) return c.json({ error: 'Event not found' }, 404);
+      return c.json({ ...fallback, venue: null });
+    }
+    return c.json({ error: 'Failed to fetch event' }, 500);
+  }
   if (!event) return c.json({ error: 'Event not found' }, 404);
 
   return c.json(event);
