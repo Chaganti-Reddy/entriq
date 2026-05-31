@@ -1,51 +1,32 @@
 // apps/api/src/services/sms.ts
-// Fast2SMS integration for OTP delivery (India only, +91).
-// Docs: https://docs.fast2sms.com
+// 2Factor.in integration for OTP delivery (India only, +91).
+// Docs: https://2factor.in/API/
 
 import { getEnv } from '../lib/env.js';
 
-/** Send a 6-digit OTP via Fast2SMS DLT route (India only). */
+/** Send a 6-digit OTP via 2Factor.in (India only). */
 export async function sendOtp(phone: string, otp: string): Promise<void> {
-  const apiKey = getEnv('FAST2SMS_API_KEY');
+  const apiKey = getEnv('TWOFACTOR_API_KEY');
 
   if (!apiKey) {
-    // Dev mode — just log the OTP instead of sending
-    console.warn(`[sms] FAST2SMS_API_KEY not set. OTP for ${phone}: ${otp}`);
+    console.warn(`[sms] TWOFACTOR_API_KEY not set. OTP for ${phone}: ${otp}`);
     return;
   }
 
-  // phone should be 10 digits (we strip +91 if present)
   const normalized = phone.replace(/^\+91/, '').replace(/\D/g, '');
+  const url = `https://2factor.in/API/V1/${apiKey}/SMS/${normalized}/${otp}`;
 
-  const payload = new URLSearchParams({
-    authorization: apiKey,
-    route:         'otp',
-    variables_values: otp,
-    flash:         '0',
-    numbers:       normalized,
-  });
+  const res  = await fetch(url);
+  const json = await res.json() as { Status: string; Details: string };
 
-  const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
-    method:  'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cache-Control': 'no-cache',
-    },
-    body: payload.toString(),
-  });
-
-  const json = await res.json() as { return: boolean; message?: string[] };
-
-  if (!json.return) {
-    const msg = json.message?.join(', ') ?? 'Unknown SMS error';
-    console.error('[sms] Fast2SMS error:', msg);
-    // Surface a user-friendly error so callers can return 503
-    const isLowBalance = msg.toLowerCase().includes('balance') || msg.toLowerCase().includes('credit') || msg.toLowerCase().includes('wallet');
-    const displayMsg   = isLowBalance
+  if (json.Status !== 'Success') {
+    console.error('[sms] 2Factor error:', json.Details);
+    const isLowBalance = json.Details?.toLowerCase().includes('balance') || json.Details?.toLowerCase().includes('credit');
+    const displayMsg = isLowBalance
       ? 'SMS service temporarily unavailable. Please try again later or contact support.'
-      : `SMS delivery failed: ${msg}`;
+      : `SMS delivery failed: ${json.Details}`;
     const err = new Error(displayMsg) as Error & { smsError: true; isLowBalance: boolean };
-    err.smsError    = true;
+    err.smsError     = true;
     err.isLowBalance = isLowBalance;
     throw err;
   }
