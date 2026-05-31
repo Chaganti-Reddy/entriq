@@ -58,6 +58,7 @@ export default function SuperAdminLayout({ children }: { children: ReactNode }) 
 
   return (
     <div className="min-h-screen bg-zinc-950">
+      {/* ── Desktop Sidebar ── */}
       <aside className="fixed left-0 top-0 h-screen w-60 bg-zinc-950 border-r border-zinc-800 flex flex-col z-40 hidden md:flex">
         <div className="px-6 py-5 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -102,10 +103,39 @@ export default function SuperAdminLayout({ children }: { children: ReactNode }) 
       </aside>
 
       <main className="md:ml-60 min-h-screen">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 pb-24 md:pb-8">
           {children}
         </div>
       </main>
+
+      {/* ── Mobile bottom nav ── */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-800 flex md:hidden z-40">
+        {navItems.map(({ label, href, icon: Icon }) => {
+          const active = href === '/super-admin'
+            ? pathname === '/super-admin'
+            : pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'flex-1 flex flex-col items-center gap-1 py-3 text-xs transition-colors',
+                active ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'
+              )}
+            >
+              <Icon className="w-5 h-5" />
+              {label}
+            </Link>
+          );
+        })}
+        <button
+          onClick={handleLogout}
+          className="flex-1 flex flex-col items-center gap-1 py-3 text-xs text-zinc-500 hover:text-red-400 transition-colors"
+        >
+          <LogOut className="w-5 h-5" />
+          Logout
+        </button>
+      </nav>
     </div>
   );
 }
