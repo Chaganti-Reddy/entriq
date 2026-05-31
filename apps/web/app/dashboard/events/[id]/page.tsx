@@ -179,11 +179,19 @@ export default function EventDetailPage() {
       return `"${s.replace(/"/g, '""')}"`;
     };
 
-    const headers = ['Name', 'Surname', 'Email', 'City', 'State', 'Mobile', 'Profession', 'Status', 'Registered At'];
+    const statusLabel = (s: string) =>
+      s === 'not_approved'   ? 'Pending' :
+      s === 'admin_approved' ? 'Approved' :
+      s === 'approved'       ? 'Checked In' : s;
+
+    const headers = ['Name', 'Surname', 'Email', 'Mobile', 'City', 'State', 'Profession', 'Status', 'Referred By', 'Acknowledged', 'Acknowledged At', 'Registered At'];
     const rows = registrations.map((r) => [
-      csvField(r.name), csvField(r.surname), csvField(r.email),
-      csvField(r.city), csvField(r.state), csvField(r.mobile),
-      csvField(r.profession), csvField(r.status),
+      csvField(r.name), csvField(r.surname), csvField(r.email), csvField(r.mobile),
+      csvField(r.city), csvField(r.state), csvField(r.profession),
+      csvField(statusLabel(r.status)),
+      csvField(r.referred_by_name ?? ''),
+      csvField(r.is_acknowledged ? 'Yes' : 'No'),
+      csvField(r.acknowledged_at ? new Date(r.acknowledged_at).toLocaleString() : ''),
       csvField(new Date(r.registered_at).toLocaleString()),
     ]);
     const csv = [headers.map(csvField), ...rows].map((row) => row.join(',')).join('\r\n');
@@ -435,8 +443,8 @@ export default function EventDetailPage() {
                 Approve {selectedPendingIds.length} selected
               </Button>
             )}
-            {/* Bulk delete button — for any selected rows */}
-            {selectedIds.size > 0 && (
+            {/* Bulk delete button — admin only */}
+            {selectedIds.size > 0 && !isLeader && (
               <Button
                 size="sm"
                 className="bg-red-600 hover:bg-red-500 text-white"
@@ -460,9 +468,11 @@ export default function EventDetailPage() {
                 className="pl-9 w-56 h-9 text-xs"
               />
             </div>
-            <Button variant="secondary" size="sm" onClick={exportCSV}>
-              <Download className="w-4 h-4" /> Export CSV
-            </Button>
+            {!isLeader && (
+              <Button variant="secondary" size="sm" onClick={exportCSV}>
+                <Download className="w-4 h-4" /> Export CSV
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
@@ -622,6 +632,7 @@ export default function EventDetailPage() {
                           Ack
                         </Button>
                       )}
+                      {!isLeader && (
                       <button
                         onClick={() => setDeleteTarget(reg)}
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
@@ -629,6 +640,7 @@ export default function EventDetailPage() {
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+                      )}
                     </div>
                   </div>
                 </div>

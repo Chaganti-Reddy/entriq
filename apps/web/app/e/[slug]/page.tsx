@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Gem, Calendar, MapPin, Loader2, LogIn, CheckCircle2, ChevronDown, User } from 'lucide-react';
+import { Gem, Calendar, MapPin, Loader2, LogIn, CheckCircle2, ChevronDown, User, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,6 +48,7 @@ type FormData = z.infer<typeof schema>;
 
 interface EventPublic {
   id: string; name: string; date: string | null; location: string | null; is_active: boolean;
+  userTeamRole?: string | null;
 }
 
 interface Leader { id: string; name: string; }
@@ -254,6 +255,26 @@ export default function RegistrationFormPage() {
         <h2 className="text-xl font-bold text-zinc-100 mb-2">Already registered!</h2>
         <p className="text-zinc-400 text-sm mb-6">You&apos;re already registered for this event. Check your QR pass status in My Events.</p>
         <Button className="w-full" asChild><Link href="/my-events">Go to My Events →</Link></Button>
+      </SimpleScreen>
+    );
+  }
+
+  if (event.userTeamRole) {
+    const roleLabel =
+      event.userTeamRole === 'admin'         ? 'Admin' :
+      event.userTeamRole === 'co_organizer'  ? 'Co-organiser' :
+      event.userTeamRole === 'leader'        ? 'Leader' :
+      event.userTeamRole === 'scanner'       ? 'Scanner' : 'Team Member';
+    return (
+      <SimpleScreen>
+        <ShieldCheck className="w-12 h-12 text-violet-400 mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-zinc-100 mb-2">You&apos;re part of the team</h2>
+        <p className="text-zinc-400 text-sm mb-1">
+          You have a <strong className="text-violet-300">{roleLabel}</strong> role for{' '}
+          <strong className="text-zinc-200">{event.name}</strong>.
+        </p>
+        <p className="text-zinc-500 text-xs mb-6">Team members cannot register as attendees.</p>
+        <Button className="w-full" asChild><Link href="/dashboard">Go to Dashboard →</Link></Button>
       </SimpleScreen>
     );
   }

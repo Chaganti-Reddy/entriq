@@ -59,7 +59,6 @@ eventsRouter.get('/public/:slug', async (c) => {
     .maybeSingle();
 
   if (error) {
-    // Fallback: retry without venue column in case migration hasn't run yet
     if (error.message?.includes('venue')) {
       const { data: fallback, error: e2 } = await db
         .from('events').select('id, name, date, location, is_active').eq('slug', slug).maybeSingle();
@@ -71,7 +70,35 @@ eventsRouter.get('/public/:slug', async (c) => {
   }
   if (!event) return c.json({ error: 'Event not found' }, 404);
 
-  return c.json(event);
+  // Check if the requester is part of this event's team (optional auth)
+  let userTeamRole: string | null = null;
+  const authHeader = c.req.header('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      const { jwtVerify } = await import('jose');
+      const { getEnv } = await import('../lib/env.js');
+      const secret = new TextEncoder().encode(getEnv('JWT_SECRET'));
+      const { payload } = await jwtVerify(authHeader.slice(7), secret);
+      const userId = (payload as { sub?: string }).sub;
+      if (userId) {
+        // Check org-level role for this event's org
+        const { data: eventRow } = await db.from('events').select('org_id').eq('id', event.id).maybeSingle();
+        if (eventRow?.org_id) {
+          const { data: orgMember } = await db
+            .from('org_members').select('role').eq('user_id', userId).eq('org_id', eventRow.org_id).maybeSingle();
+          if (orgMember) userTeamRole = orgMember.role;
+        }
+        // Check event-level role (leader, scanner)
+        if (!userTeamRole) {
+          const { data: eventMember } = await db
+            .from('event_members').select('role').eq('event_id', event.id).eq('user_id', userId).maybeSingle();
+          if (eventMember) userTeamRole = eventMember.role;
+        }
+      }
+    } catch { /* not authenticated — that's fine */ }
+  }
+
+  return c.json({ ...event, userTeamRole });
 });
 
 // GET /events/public/:slug/leaders — list leaders assigned to this event (no auth, for registration form)
