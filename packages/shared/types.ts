@@ -53,6 +53,7 @@ export interface Event {
   description:    string | null;
   date:           string | null;
   location:       string | null;
+  venue:          string | null;
   slug:           string;
   admin_password: string;
   is_active:      boolean;

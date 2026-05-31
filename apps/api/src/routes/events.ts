@@ -17,8 +17,9 @@ const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const createEventSchema = z.object({
   name: z.string().min(2).max(200).trim(),
   description: z.string().max(2000).trim().optional(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD').optional(),
-  location: z.string().max(300).trim().optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+  location: z.string().min(1, 'Location is required').max(300).trim(),
+  venue: z.string().max(300).trim().optional(),
   slug: z.string().min(3).max(100).regex(slugRegex, 'Slug must be lowercase alphanumeric with hyphens'),
   adminPassword: z.string().min(6).max(100),
 });
@@ -27,7 +28,8 @@ const updateEventSchema = z.object({
   name: z.string().min(2).max(200).trim().optional(),
   description: z.string().max(2000).trim().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  location: z.string().max(300).trim().optional(),
+  location: z.string().min(1).max(300).trim().optional(),
+  venue: z.string().max(300).trim().optional(),
   slug: z.string().min(3).max(100).regex(slugRegex).optional(),
   adminPassword: z.string().min(6).max(100).optional(),
   isActive: z.boolean().optional(),
@@ -52,8 +54,7 @@ eventsRouter.get('/public/:slug', async (c) => {
 
   const { data: event, error } = await db
     .from('events')
-    .select('id, name, date, location, is_active')
-    .eq('slug', slug)
+    .select('id, name, date, location, venue, is_active')
     .maybeSingle();
 
   if (error) return c.json({ error: 'Failed to fetch event' }, 500);
@@ -152,7 +153,7 @@ eventsRouter.get('/', requireRole('co_organizer', 'admin', 'leader'), async (c) 
 // POST /events — create a new event (admin only)
 eventsRouter.post('/', requireRole('admin'), zValidator('json', createEventSchema), async (c) => {
   const user = c.get('user');
-  const { name, description, date, location, slug, adminPassword } = c.req.valid('json');
+  const { name, description, date, location, venue, slug, adminPassword } = c.req.valid('json');
 
   // Check slug uniqueness
   const { data: existing } = await db
@@ -176,11 +177,12 @@ eventsRouter.post('/', requireRole('admin'), zValidator('json', createEventSchem
       description: description ?? null,
       date: date ?? null,
       location: location ?? null,
+      venue: venue ?? null,
       slug,
       admin_password: adminPasswordHash,
       is_active: true,
     })
-    .select('id, org_id, name, description, date, location, slug, is_active, created_at')
+    .select('id, org_id, name, description, date, location, venue, slug, is_active, created_at')
     .single();
 
   if (error || !event) {
@@ -275,6 +277,7 @@ eventsRouter.put('/:id', requireRole('admin'), zValidator('json', updateEventSch
   if (body.description !== undefined) updatePayload.description = body.description;
   if (body.date !== undefined) updatePayload.date = body.date;
   if (body.location !== undefined) updatePayload.location = body.location;
+  if (body.venue    !== undefined) updatePayload.venue    = body.venue;
   if (body.slug !== undefined) updatePayload.slug = body.slug;
   if (body.isActive !== undefined) updatePayload.is_active = body.isActive;
   // Hash the new password if provided — never store plaintext gate passwords.
@@ -286,7 +289,7 @@ eventsRouter.put('/:id', requireRole('admin'), zValidator('json', updateEventSch
     .from('events')
     .update(updatePayload)
     .eq('id', id)
-    .select('id, org_id, name, description, date, location, slug, is_active, created_at')
+    .select('id, org_id, name, description, date, location, venue, slug, is_active, created_at')
     .single();
 
   if (error || !updated) {

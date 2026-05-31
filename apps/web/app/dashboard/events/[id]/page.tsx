@@ -26,7 +26,7 @@ import { useAuthStore } from '@/stores/auth';
 import { formatDateShort, formatDateTime, timeAgo } from '@/lib/utils';
 import type { EventWithCounts, Registration } from '@entriq/shared';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -134,6 +134,8 @@ export default function EventDetailPage() {
       if (statusFilter === 'admin_approved'  && r.status !== 'admin_approved') return false;
       if (statusFilter === 'approved'        && r.status !== 'approved')       return false;
       if (statusFilter === 'not_acknowledged' && !(r.referred_by_user_id && !r.is_acknowledged)) return false;
+      // Default "all" view: hide unacknowledged referrals — they belong in the Not Acknowledged bucket
+      if (statusFilter === 'all' && r.referred_by_user_id && !r.is_acknowledged) return false;
     }
     const q = search.toLowerCase();
     return !q || (
@@ -324,8 +326,10 @@ export default function EventDetailPage() {
             {registrations && registrations.length > 0 && (
               <div className="flex items-center gap-1 flex-wrap">
                 {!referredByMeOnly && (['all', 'not_approved', 'admin_approved', 'approved'] as const).map((f) => {
+                  // "All" count excludes unacknowledged referred registrations
+                  const mainCount = (registrations?.filter((r) => !r.referred_by_user_id || r.is_acknowledged).length) ?? 0;
                   const label =
-                    f === 'all'           ? `All (${registrations.length})` :
+                    f === 'all'           ? `Main (${mainCount})` :
                     f === 'not_approved'  ? `Pending (${pendingCount})` :
                     f === 'admin_approved'? `Approved (${adminApprovedCount})` :
                                            `Checked In (${checkedInCount})`;
@@ -377,8 +381,8 @@ export default function EventDetailPage() {
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Bulk approve button — only for selected pending rows */}
-            {selectedPendingIds.length > 0 && (
+            {/* Bulk approve button — only for selected pending rows, not shown to leaders */}
+            {selectedPendingIds.length > 0 && !isLeader && (
               <Button
                 size="sm"
                 className="bg-green-600 hover:bg-green-500 text-white"
@@ -544,7 +548,7 @@ export default function EventDetailPage() {
                         <p className="text-xs text-zinc-500">{formatDateTime(reg.registered_at)}</p>
                         <code className="text-[10px] text-zinc-600 font-mono">{reg.unique_code}</code>
                       </div>
-                      {isPending && (
+                      {isPending && !isLeader && (
                         <Button
                           size="sm"
                           className="h-8 bg-green-600 hover:bg-green-500 text-white text-xs"
